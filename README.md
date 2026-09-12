@@ -29,6 +29,8 @@ Install directly from the [Chrome Web Store](https://chromewebstore.google.com/d
 
 ### Load from source
 
+Use Node.js 20.19+ or 22.12+ (a current supported LTS release is recommended).
+
 1. Clone this repo and install dependencies:
    ```bash
    cd extension
@@ -70,6 +72,7 @@ All commands run from the `extension/` directory:
 npm run dev      # Vite dev server — hot reload for popup/dashboard UI
 npm run build    # Production build to extension/dist/
 npm run lint     # ESLint
+npm test         # Feed parsing, storage migration, and concurrency regressions
 ```
 
 **Note:** The background service worker does not hot-reload. After changes to `src/background/`, run `npm run build` and reload the extension in Chrome.
@@ -80,6 +83,8 @@ npm run lint     # ESLint
 - **Dashboard** (`src/dashboard/Dashboard.jsx`) — sidebar feed list, article list, settings modal
 - **Background worker** (`src/background/index.js`) — all feed fetching and storage writes; updates the badge with the unread count
 - **Storage** — `chrome.storage.sync` for settings/subscriptions, `chrome.storage.local` for articles
+- **Subscription migration** — Existing subscription lists migrate automatically to individual sync records, preserving feed IDs and cached articles. Chrome's overall sync capacity and write-rate limits still apply; failed operations are reported in the reader.
+- **Feed limits** — Fetches have a 10-second deadline through body download and a 5 MiB maximum body size. Feeds declaring a DOCTYPE are rejected to prevent custom XML entity processing.
 - **Feed parsing** — `fast-xml-parser` handles RSS 2.0, Atom, RSS 1.0 (RDF)
 - **Content safety** — HTML from feeds sanitized with `DOMPurify` before rendering
 

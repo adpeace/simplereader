@@ -10,6 +10,8 @@ const STORAGE_KEYS = {
     ITEMS: 'items' // Stored in local
 };
 
+export const SUBSCRIPTION_PREFIX = 'subscription_';
+
 /**
  * Get Settings from Sync Storage
  */
@@ -30,19 +32,99 @@ export async function saveSettings(settings) {
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: settings });
 }
 
-/**
- * Get Subscriptions from Sync Storage
- */
+function getSubscriptionEntries(data) {
+    const byId = new Map();
+    let nextOrder = 0;
+
+    const legacySubscriptions = Array.isArray(data[STORAGE_KEYS.SUBSCRIPTIONS])
+        ? data[STORAGE_KEYS.SUBSCRIPTIONS]
+        : [];
+
+    legacySubscriptions.forEach((subscription) => {
+        if (!subscription || subscription.id == null) return;
+        const id = String(subscription.id);
+        const existing = byId.get(id);
+        byId.set(id, {
+            subscription,
+            order: existing ? existing.order : nextOrder++,
+        });
+    });
+
+    Object.entries(data)
+        .filter(([key]) => key.startsWith(SUBSCRIPTION_PREFIX))
+        .forEach(([key, subscription]) => {
+            if (!subscription || subscription.id == null) return;
+            const id = String(subscription.id);
+            if (key !== `${SUBSCRIPTION_PREFIX}${id}`) return;
+            const existing = byId.get(id);
+            byId.set(id, {
+                subscription,
+                order: existing ? existing.order : nextOrder++,
+            });
+        });
+
+    const entries = Array.from(byId.values());
+    if (entries.every(({ subscription }) => Number.isFinite(Number(subscription.addedAt)))) {
+        entries.sort((left, right) => {
+            const addedAtDifference = Number(left.subscription.addedAt) - Number(right.subscription.addedAt);
+            return addedAtDifference || left.order - right.order;
+        });
+    } else {
+        entries.sort((left, right) => left.order - right.order);
+    }
+
+    return entries.map(({ subscription }) => subscription);
+}
+
+/** Get subscriptions from per-record keys, merged with the legacy array. */
 export async function getSubscriptions() {
-    const data = await chrome.storage.sync.get([STORAGE_KEYS.SUBSCRIPTIONS]);
-    return data[STORAGE_KEYS.SUBSCRIPTIONS] || [];
+    const data = await chrome.storage.sync.get(null);
+    return getSubscriptionEntries(data);
+}
+
+/** Write one subscription without rewriting the rest of the collection. */
+export async function saveSubscription(subscription) {
+    if (!subscription || subscription.id == null) {
+        throw new Error('A subscription id is required');
+    }
+    await chrome.storage.sync.set({
+        [`${SUBSCRIPTION_PREFIX}${subscription.id}`]: subscription,
+    });
+}
+
+/** Remove one subscription record from Sync Storage. */
+export async function removeSubscription(id) {
+    await chrome.storage.sync.remove(`${SUBSCRIPTION_PREFIX}${id}`);
 }
 
 /**
- * Save Subscriptions to Sync Storage
+ * Copy legacy subscriptions to individual sync keys. The legacy key remains
+ * until the complete missing-record write succeeds, making retries safe.
  */
-export async function saveSubscriptions(subscriptions) {
-    await chrome.storage.sync.set({ [STORAGE_KEYS.SUBSCRIPTIONS]: subscriptions });
+export async function migrateSubscriptions() {
+    const data = await chrome.storage.sync.get(null);
+    const legacySubscriptions = Array.isArray(data[STORAGE_KEYS.SUBSCRIPTIONS])
+        ? data[STORAGE_KEYS.SUBSCRIPTIONS]
+        : [];
+    const missingRecords = {};
+
+    legacySubscriptions.forEach((subscription) => {
+        if (!subscription || subscription.id == null) return;
+        const key = `${SUBSCRIPTION_PREFIX}${subscription.id}`;
+        if (!Object.prototype.hasOwnProperty.call(data, key)) {
+            missingRecords[key] = subscription;
+        }
+    });
+
+    const keysToWrite = Object.keys(missingRecords);
+    if (keysToWrite.length > 0) {
+        await chrome.storage.sync.set(missingRecords);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(data, STORAGE_KEYS.SUBSCRIPTIONS)) {
+        await chrome.storage.sync.remove(STORAGE_KEYS.SUBSCRIPTIONS);
+    }
+    return getSubscriptions();
 }
 
 /**

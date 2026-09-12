@@ -2,20 +2,31 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import DOMPurify from 'dompurify';
 import '../App.css';
 import {
-    getSubscriptions, saveSubscriptions,
+    getSubscriptions, SUBSCRIPTION_PREFIX,
     getItems,
     getLastRefreshed,
     getSettings, saveSettings,
-    markItemRead,
     getFeedValidators
 } from '../utils/storage';
 import { parseOPML, generateOPML } from '../utils/opml';
 
 const PAGE_SIZE = 50;
+const articleKey = (itemId, feedId) => JSON.stringify([feedId, itemId]);
+
+async function requestBackground(request) {
+    const response = await chrome.runtime.sendMessage(request);
+    if (!response?.success) {
+        const error = new Error(response?.error || 'The reader could not complete this action. Please try again.');
+        error.code = response?.code;
+        throw error;
+    }
+    return response;
+}
 
 // Strip HTML tags for collapsed plain-text previews — no DOMPurify needed.
 function stripHtml(html) {
-    const stripped = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Older versions may already have cached numeric Atom text.
+    const stripped = String(html ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     const ta = document.createElement('textarea');
     ta.innerHTML = stripped;
     return ta.value;
@@ -39,14 +50,14 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
 
     // Plain text excerpt for collapsed view — computed once, no sanitization.
     const textExcerpt = useMemo(() => {
-        if (!item.content) return '';
+        if (item.content == null || item.content === '') return '';
         return stripHtml(item.content).slice(0, 300);
     }, [item.content]);
 
     // Sanitize only when expanded, and only once per item (memoized by isExpanded + content).
     const sanitizedContent = useMemo(() => {
-        if (!isExpanded || !item.content) return null;
-        return DOMPurify.sanitize(item.content, {
+        if (!isExpanded || item.content == null || item.content === '') return null;
+        return DOMPurify.sanitize(String(item.content), {
             ADD_TAGS: ['img'],
             ADD_ATTR: ['src', 'width', 'height', 'alt']
         });
@@ -109,6 +120,8 @@ function Dashboard() {
     const [items, setItems] = useState([]);
     const [newFeedUrl, setNewFeedUrl] = useState('');
     const [loading, setLoading] = useState(false);
+    const [feedError, setFeedError] = useState('');
+    const [actionError, setActionError] = useState('');
     const [selectedFeedId, setSelectedFeedId] = useState(null);
     const [expandedItems, setExpandedItems] = useState(new Set());
     const [page, setPage] = useState(1);
@@ -117,12 +130,15 @@ function Dashboard() {
 
     const [showSettings, setShowSettings] = useState(false);
     const [importStatus, setImportStatus] = useState('');
+    const [importFailures, setImportFailures] = useState([]);
+    const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef(null);
 
     const [searchQuery, setSearchQuery] = useState('');
 
     const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [refreshStatus, setRefreshStatus] = useState(null);
     const [feedMeta, setFeedMeta] = useState({});
     const [now, setNow] = useState(() => Date.now());
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -142,8 +158,8 @@ function Dashboard() {
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
             filtered = filtered.filter(i => {
-                if ((i.title || '').toLowerCase().includes(q)) return true;
-                if (i.content) return stripHtml(i.content).toLowerCase().includes(q);
+                if (String(i.title ?? '').toLowerCase().includes(q)) return true;
+                if (i.content != null) return stripHtml(i.content).toLowerCase().includes(q);
                 return false;
             });
         }
@@ -190,26 +206,30 @@ function Dashboard() {
 
     // useCallback makes the reference stable so ArticleItem's React.memo works correctly.
     const toggleExpand = useCallback((itemId, feedId) => {
+        const key = articleKey(itemId, feedId);
         setExpandedItems(prev => {
             const next = new Set(prev);
-            next.has(itemId) ? next.delete(itemId) : next.add(itemId);
+            next.has(key) ? next.delete(key) : next.add(key);
             return next;
         });
-        markItemRead(itemId, feedId);
-        setItems(prev => prev.map(i => i.id === itemId ? { ...i, read: true } : i));
+        requestBackground({ type: 'MARK_READ', itemId, feedId })
+            .catch(error => setActionError(`Could not save read status: ${error.message}`));
     }, []);
 
     const toggleStar = useCallback(async (feedId) => {
-        const updated = subscriptions.map(s =>
-            s.id === feedId ? { ...s, starred: !s.starred } : s
-        );
-        setSubscriptions(updated);
-        await saveSubscriptions(updated);
-    }, [subscriptions]);
+        setActionError('');
+        try {
+            await requestBackground({ type: 'TOGGLE_STAR', feedId });
+        } catch (error) {
+            setActionError(`Could not update this feed: ${error.message}`);
+        }
+    }, []);
 
+    const itemsRequest = useRef(0);
     const refreshItems = useCallback(async () => {
+        const request = ++itemsRequest.current;
         const allItems = await getItems();
-        setItems(allItems);
+        if (request === itemsRequest.current) setItems(allItems);
     }, []);
 
     useEffect(() => {
@@ -222,13 +242,17 @@ function Dashboard() {
             setSettings(cfg);
             setFeedMeta(meta);
             applyAppearance(cfg);
-            refreshItems();
+            await refreshItems();
         }
-        init();
+        init().catch(error => setActionError(`Could not load your reader: ${error.message}`));
 
         const handleStorageChange = (changes, area) => {
-            if (area === 'sync' && changes.subscriptions) {
-                setSubscriptions(changes.subscriptions.newValue || []);
+            if (area === 'sync' && Object.keys(changes).some(key => key === 'subscriptions' || key.startsWith(SUBSCRIPTION_PREFIX))) {
+                getSubscriptions().then(subs => {
+                    setSubscriptions(subs);
+                    setSelectedFeedId(current => subs.some(sub => sub.id === current) ? current : null);
+                    return refreshItems();
+                }).catch(error => setActionError(`Could not load subscriptions: ${error.message}`));
             }
             if (area === 'local') {
                 if (changes.lastRefreshedAt) {
@@ -237,7 +261,7 @@ function Dashboard() {
                 if (changes.feedMeta) {
                     setFeedMeta(changes.feedMeta.newValue || {});
                 }
-                refreshItems();
+                refreshItems().catch(error => setActionError(`Could not load articles: ${error.message}`));
             }
         };
         chrome.storage.onChanged.addListener(handleStorageChange);
@@ -258,7 +282,8 @@ function Dashboard() {
                 setShowSettings(false);
                 return;
             }
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (showSettings || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey ||
+                e.target.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]')) return;
             if (e.key === 'j' || e.key === 'ArrowDown') {
                 e.preventDefault();
                 setFocusedIndex(prev => Math.min((prev ?? -1) + 1, visibleItems.length - 1));
@@ -272,68 +297,97 @@ function Dashboard() {
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [focusedIndex, visibleItems, toggleExpand]);
+    }, [focusedIndex, visibleItems, toggleExpand, showSettings]);
 
     const handleSaveSettings = async (patch) => {
         const updated = { ...settings, ...patch };
-        setSettings(updated);
-        await saveSettings(updated);
-        applyAppearance(updated);
+        try {
+            await saveSettings(updated);
+            setSettings(updated);
+            applyAppearance(updated);
+        } catch (error) {
+            setActionError(`Could not save settings: ${error.message}`);
+        }
     };
 
-    const handleManualRefresh = () => {
+    const handleManualRefresh = async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
-        chrome.runtime.sendMessage({ type: 'REFRESH_FEEDS' }, () => {
+        setRefreshStatus(null);
+        try {
+            const response = await chrome.runtime.sendMessage({ type: 'REFRESH_FEEDS' });
+            if (!response) throw new Error('No response from the reader. Please try again.');
+            const errors = (response.errors || []).map(failure => `${failure.title}: ${failure.error}`).join('; ');
+            if (response.status === 'error' || response.success === false) {
+                throw new Error(errors || response.error || 'No feeds could be refreshed.');
+            }
+            setRefreshStatus({
+                failed: response.status === 'partial',
+                message: response.status === 'partial'
+                    ? `${response.refreshed} feeds refreshed; ${response.failed} failed. ${errors}`
+                    : response.refreshed ? `Refreshed ${response.refreshed} feeds.` : 'No feeds to refresh.'
+            });
+        } catch (error) {
+            setRefreshStatus({ failed: true, message: `Refresh failed: ${error.message}` });
+        } finally {
             setIsRefreshing(false);
-        });
+        }
     };
 
     const handleAddFeed = async (e) => {
         e.preventDefault();
         if (!newFeedUrl) return;
         setLoading(true);
-        addFeedToBackground(newFeedUrl).then(success => {
+        setFeedError('');
+        try {
+            await requestBackground({ type: 'ADD_FEED', url: newFeedUrl.trim() });
+            setNewFeedUrl('');
+        } catch (error) {
+            setFeedError(error.message);
+        } finally {
             setLoading(false);
-            if (success) setNewFeedUrl('');
-        });
+        }
     };
 
-    const addFeedToBackground = (url) => {
-        return new Promise((resolve) => {
-            chrome.runtime.sendMessage({ type: 'ADD_FEED', url }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error('Runtime error:', chrome.runtime.lastError);
-                    resolve(false);
-                    return;
-                }
-                resolve(response?.success ?? false);
-            });
-        });
-    };
-
-    const handleDeleteFeed = (id) => {
+    const handleDeleteFeed = async (id) => {
         if (!confirm('Unsubscribe from this feed?')) return;
-        chrome.runtime.sendMessage({ type: 'DELETE_FEED', feedId: id });
+        setActionError('');
+        try {
+            await requestBackground({ type: 'DELETE_FEED', feedId: id });
+        } catch (error) {
+            setActionError(`Could not remove this feed: ${error.message}`);
+        }
     };
 
     const handleImportOPML = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const text = await file.text();
+        e.target.value = '';
+        setIsImporting(true);
+        setImportFailures([]);
         try {
+            const text = await file.text();
             const feeds = parseOPML(text);
             setImportStatus(`Found ${feeds.length} feeds. Importing...`);
-            let count = 0;
-            for (const feed of feeds) {
-                setImportStatus(`Importing ${count + 1}/${feeds.length}: ${feed.title}`);
-                await addFeedToBackground(feed.url);
-                count++;
+            let imported = 0;
+            let skipped = 0;
+            const failures = [];
+            for (const [index, feed] of feeds.entries()) {
+                setImportStatus(`Importing ${index + 1}/${feeds.length}: ${feed.title}`);
+                try {
+                    await requestBackground({ type: 'ADD_FEED', url: feed.url });
+                    imported++;
+                } catch (error) {
+                    if (error.code === 'DUPLICATE_FEED') skipped++;
+                    else failures.push(`${feed.title}: ${error.message}`);
+                }
             }
-            setImportStatus(`Done — ${count} feeds imported.`);
+            setImportFailures(failures);
+            setImportStatus(`Imported ${imported}; skipped ${skipped} duplicates; failed ${failures.length}.`);
         } catch (err) {
-            setImportStatus('Error parsing OPML file.');
-            console.error(err);
+            setImportStatus(`Could not import OPML: ${err.message}`);
+        } finally {
+            setIsImporting(false);
         }
     };
 
@@ -382,6 +436,8 @@ function Dashboard() {
                 <form className="add-feed-form" onSubmit={handleAddFeed}>
                     <input
                         type="url"
+                        aria-label="Feed URL"
+                        aria-describedby={feedError ? 'feed-error' : undefined}
                         className="feed-url-input"
                         placeholder="https://example.com/rss"
                         value={newFeedUrl}
@@ -390,6 +446,7 @@ function Dashboard() {
                     <button type="submit" className="subscribe-btn" disabled={loading}>
                         {loading ? 'Adding...' : '+ Subscribe'}
                     </button>
+                    {feedError && <p id="feed-error" className="feed-error" role="alert">{feedError}</p>}
                 </form>
 
                 <nav className="feed-nav">
@@ -399,7 +456,7 @@ function Dashboard() {
                             role="button"
                             tabIndex={0}
                             onClick={() => selectFeed(null)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectFeed(null); }}
+                            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectFeed(null); } }}
                         >
                             <span className="feed-item-title">All Articles</span>
                             {totalUnread > 0 && <span className="feed-unread">{totalUnread}</span>}
@@ -411,7 +468,7 @@ function Dashboard() {
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => selectFeed(sub.id)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectFeed(sub.id); }}
+                                onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectFeed(sub.id); } }}
                             >
                                 <span className="feed-item-title">{sub.title}</span>
                                 {unreadByFeed[sub.id] > 0 && (
@@ -483,6 +540,9 @@ function Dashboard() {
                     </div>
                 </header>
 
+                {!showSettings && actionError && <p className="reader-status" role="alert">{actionError}</p>}
+                {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
+
                 <div className="article-list">
                     {displayItems.length === 0 && (
                         <div className="empty-state">
@@ -495,10 +555,10 @@ function Dashboard() {
 
                     {visibleItems.map((item, index) => (
                         <ArticleItem
-                            key={item.id}
+                            key={articleKey(item.id, item.feedId)}
                             item={item}
                             feedTitle={subMap[item.feedId]}
-                            isExpanded={expandedItems.has(item.id)}
+                            isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
                             isFocused={focusedIndex === index}
                             onToggle={toggleExpand}
                         />
@@ -543,6 +603,8 @@ function Dashboard() {
                             </button>
                         </div>
 
+                        {actionError && <p className="reader-status" role="alert">{actionError}</p>}
+
                         <section className="modal-section">
                             <h3 className="modal-section-title">Appearance</h3>
                             <p className="modal-section-title" style={{ marginBottom: 8 }}>Theme</p>
@@ -570,8 +632,8 @@ function Dashboard() {
                         <section className="modal-section">
                             <h3 className="modal-section-title">OPML</h3>
                             <div className="modal-actions">
-                                <button className="modal-btn primary" onClick={() => fileInputRef.current.click()}>
-                                    Import OPML
+                                <button className="modal-btn primary" disabled={isImporting} onClick={() => fileInputRef.current.click()}>
+                                    {isImporting ? 'Importing…' : 'Import OPML'}
                                 </button>
                                 <input
                                     type="file"
@@ -584,7 +646,8 @@ function Dashboard() {
                                     Export OPML
                                 </button>
                             </div>
-                            {importStatus && <p className="import-status">{importStatus}</p>}
+                            {importStatus && <p className="import-status" role="status">{importStatus}</p>}
+                            {importFailures.length > 0 && <ul className="import-errors">{importFailures.map((failure, index) => <li key={index}>{failure}</li>)}</ul>}
                         </section>
 
                         <section className="modal-section">

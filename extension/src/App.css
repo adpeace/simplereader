@@ -194,6 +194,43 @@
   cursor: not-allowed;
 }
 
+.feed-error {
+  color: #F4AAAA;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+}
+
+.reader-status {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 12px 20px;
+  padding-left: 12px;
+  border-left: 3px solid var(--red);
+  overflow-wrap: anywhere;
+  max-height: 8rem;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.import-errors {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+
+.modal-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* Feed Navigation */
 
 .feed-nav {
