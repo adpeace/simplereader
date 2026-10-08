@@ -292,7 +292,7 @@ function Dashboard() {
         };
     }, [refreshItems]);
 
-    // Keyboard navigation: j/k or arrows to move focus, Enter to expand/collapse,
+    // Keyboard navigation: j/k or arrows wrap focus, Enter to expand/collapse,
     // o to open the focused article in a background tab, Escape to close modal.
     useEffect(() => {
         const handler = (e) => {
@@ -304,10 +304,14 @@ function Dashboard() {
                 e.target.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]')) return;
             if (e.key === 'j' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                setFocusedIndex(prev => Math.min((prev ?? -1) + 1, visibleItems.length - 1));
+                setFocusedIndex(prev => visibleItems.length
+                    ? ((prev ?? -1) + 1) % visibleItems.length
+                    : null);
             } else if (e.key === 'k' || e.key === 'ArrowUp') {
                 e.preventDefault();
-                setFocusedIndex(prev => Math.max((prev ?? visibleItems.length) - 1, 0));
+                setFocusedIndex(prev => visibleItems.length
+                    ? ((prev ?? visibleItems.length) - 1 + visibleItems.length) % visibleItems.length
+                    : null);
             } else if (e.key === 'Enter' && focusedIndex !== null) {
                 const item = visibleItems[focusedIndex];
                 if (item) toggleExpand(item.id, item.feedId);

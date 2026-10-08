@@ -17,7 +17,7 @@ Privacy-focused, local-first RSS reader. No account required.
 - **Focused reading** in Modern — sans serif text, a centered reading column, and neutral colors
 - **Unread article labels** make read status easy to identify
 - **Full-text search** across all loaded articles
-- **Keyboard navigation** (j/k or arrow keys, Enter to expand, o to open the selected article in a background tab)
+- **Keyboard navigation** (j/k or arrow keys wrap between articles, Enter to expand, o to open the selected article in a background tab)
 - **Original article links** beside each title — open articles in new tabs directly from the list
 - **Starred/pinned feeds** float to the top of the sidebar
 - **Efficient conditional HTTP fetching** (ETag / Last-Modified)
