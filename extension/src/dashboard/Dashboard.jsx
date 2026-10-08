@@ -69,6 +69,15 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
         })
         : '';
 
+    const handleOpenOriginal = (event) => {
+        event.stopPropagation();
+        // Keep native link behavior for clicks, modifier clicks, and middle clicks.
+        // Queue after a pending unread write, just like opening in the reader.
+        if (event.button === 0 || event.button === 1) {
+            onMarkRead(item.id, item.feedId, true, true);
+        }
+    };
+
     return (
         <article
             ref={ref}
@@ -85,7 +94,8 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                         href={sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={handleOpenOriginal}
+                        onAuxClick={handleOpenOriginal}
                         className="article-source-link"
                         aria-label={`Open original article: ${item.title} (opens in a new tab)`}
                         title="Open original article in a new tab"
@@ -135,7 +145,8 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                         href={sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={handleOpenOriginal}
+                        onAuxClick={handleOpenOriginal}
                         className="read-more-link"
                     >
                         Read full article →
@@ -435,6 +446,7 @@ function Dashboard() {
                 if (url) {
                     e.preventDefault();
                     chrome.tabs.create({ url, active: false })
+                        .then(() => setItemRead(item.id, item.feedId, true, true))
                         .catch(error => setActionError(`Could not open this article: ${error.message}`));
                 }
             }

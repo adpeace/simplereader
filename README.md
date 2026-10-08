@@ -19,7 +19,7 @@ Privacy-focused, local-first RSS reader. No account required.
 - **Full-text search** across all loaded articles
 - **Read controls** — mark individual articles read/unread, mark all articles or one feed as read, and undo bulk read changes
 - **Keyboard navigation** (j/k or arrow keys wrap between articles, Enter to expand, r to toggle read status, o to open the selected article in a background tab)
-- **Original article links** beside each title — open articles in new tabs directly from the list
+- **Original article links** beside each title — open articles in new tabs directly from the list and mark them as read
 - **Headings-only view** — toggle the top-bar button for a compact article list; your choice is saved across sessions
 - **Starred/pinned feeds** float to the top of the sidebar
 - **Efficient conditional HTTP fetching** (ETag / Last-Modified)
