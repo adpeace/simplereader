@@ -18,10 +18,12 @@ function createEvent() {
 
 function createStorageArea(areaName, onChanged) {
     const data = {};
+    const setCalls = [];
     let failNextSet = null;
 
     return {
         data,
+        setCalls,
         failNextSet(error) {
             failNextSet = error;
         },
@@ -33,6 +35,7 @@ function createStorageArea(areaName, onChanged) {
                 .map((key) => [key, structuredClone(data[key])]));
         },
         async set(values) {
+            setCalls.push(structuredClone(values));
             if (failNextSet) {
                 const error = failNextSet;
                 failNextSet = null;
@@ -127,6 +130,7 @@ async function resetStorage() {
     for (const key of Object.keys(chromeMock.storage.sync.data)) delete chromeMock.storage.sync.data[key];
     for (const key of Object.keys(chromeMock.storage.local.data)) delete chromeMock.storage.local.data[key];
     chromeMock.state.badgeText = '';
+    chromeMock.storage.local.setCalls.length = 0;
     globalThis.fetch = async () => responseFor('https://example.test/feed');
 }
 
@@ -181,6 +185,144 @@ test('a queued read and a refresh preserve existing item state', async () => {
     const stored = chromeMock.storage.local.data[`items_${subscription.id}`];
     assert.equal(stored.existing.read, true);
     assert.equal(stored.existing.title, 'Old title');
+});
+
+test('manual unread changes affect only the requested feed and update the badge', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, [{ id: 'same-id', read: true }]);
+    seedSubscription({ id: 'two', title: 'Two' }, [{ id: 'same-id', read: true }]);
+    const response = await chromeMock.sendMessage({ type: 'MARK_READ', feedId: 'one', itemId: 'same-id', isRead: false });
+    assert.equal(response.success, true);
+    assert.equal(chromeMock.storage.local.data.items_one['same-id'].read, false);
+    assert.equal(chromeMock.storage.local.data.items_two['same-id'].read, true);
+    assert.equal(chromeMock.state.badgeText, '1');
+});
+
+test('bulk feed marking handles the full 200-article cache and skips other feeds', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, Array.from({ length: 200 }, (_, i) => ({ id: String(i), read: i === 0 })));
+    seedSubscription({ id: 'two', title: 'Two' }, [{ id: '0', read: false }]);
+
+    const response = await chromeMock.sendMessage({ type: 'MARK_ALL_READ', feedId: 'one' });
+    assert.equal(response.success, true);
+    assert.equal(response.changedItems.length, 199);
+    assert.equal(response.changedItems.some(item => item.itemId === '0'), false);
+    assert.equal(Object.values(chromeMock.storage.local.data.items_one).every(item => item.read), true);
+    assert.equal(chromeMock.storage.local.data.items_two['0'].read, false);
+    assert.equal(chromeMock.state.badgeText, '1');
+    assert.equal(chromeMock.storage.local.setCalls.length, 1);
+    assert.deepEqual(Object.keys(chromeMock.storage.local.setCalls[0]), ['items_one']);
+
+    const repeated = await chromeMock.sendMessage({ type: 'MARK_ALL_READ', feedId: 'one' });
+    assert.deepEqual(repeated.changedItems, []);
+    assert.equal(chromeMock.storage.local.setCalls.length, 1);
+});
+
+test('global marking batches subscribed feeds and undo preserves prior read and later arrivals', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, [{ id: 'shared', read: false }, { id: 'already-read', read: true }]);
+    seedSubscription({ id: 'two', title: 'Two' }, [{ id: 'shared', read: false }]);
+    chromeMock.storage.local.data.items_orphan = { old: { id: 'old', feedId: 'orphan', read: false } };
+
+    const response = await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+    assert.equal(response.success, true);
+    assert.deepEqual(response.changedItems.map(({ feedId, itemId }) => ({ feedId, itemId })),
+        [{ feedId: 'one', itemId: 'shared' }, { feedId: 'two', itemId: 'shared' }]);
+    assert.equal(chromeMock.state.badgeText, '');
+    assert.equal(chromeMock.storage.local.setCalls.length, 1);
+    assert.deepEqual(Object.keys(chromeMock.storage.local.setCalls[0]), ['items_one', 'items_two']);
+    assert.equal(chromeMock.storage.local.data.items_orphan.old.read, false);
+
+    chromeMock.storage.local.data.items_one.new = { id: 'new', feedId: 'one', read: false };
+    const undo = await chromeMock.sendMessage({ type: 'UNDO_MARK_ALL_READ', items: response.changedItems });
+    assert.equal(undo.success, true);
+    assert.equal(chromeMock.storage.local.data.items_one.shared.read, false);
+    assert.equal(chromeMock.storage.local.data.items_two.shared.read, false);
+    assert.equal(chromeMock.storage.local.data.items_one['already-read'].read, true);
+    assert.equal(chromeMock.storage.local.data.items_one.new.read, false);
+    assert.equal(chromeMock.state.badgeText, '3');
+});
+
+test('undo tolerates removed feeds and pruned articles without recreating their data', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, [{ id: 'pruned', read: false }]);
+    seedSubscription({ id: 'two', title: 'Two' }, [{ id: 'deleted', read: false }]);
+    const response = await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+    delete chromeMock.storage.local.data.items_one.pruned;
+    await chromeMock.sendMessage({ type: 'DELETE_FEED', feedId: 'two' });
+    const undo = await chromeMock.sendMessage({ type: 'UNDO_MARK_ALL_READ', items: response.changedItems });
+    assert.equal(undo.success, true);
+    assert.deepEqual(undo.changedItems, []);
+    assert.deepEqual(chromeMock.storage.local.data.items_one, {});
+    assert.equal(Object.hasOwn(chromeMock.storage.local.data, 'items_two'), false);
+});
+
+test('bulk undo preserves later explicit read actions and newer bulk changes across tabs', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, [
+        { id: 'opened-later', read: false },
+        { id: 'marked-again', read: false },
+        { id: 'untouched', read: false },
+    ]);
+    const original = await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+    // Opening an already read article must invalidate the old bulk Undo.
+    await chromeMock.sendMessage({ type: 'MARK_READ', feedId: 'one', itemId: 'opened-later' });
+    await chromeMock.sendMessage({ type: 'MARK_READ', feedId: 'one', itemId: 'marked-again', isRead: false });
+    const later = await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+
+    const undo = await chromeMock.sendMessage({ type: 'UNDO_MARK_ALL_READ', items: original.changedItems });
+    assert.equal(undo.success, true);
+    assert.deepEqual(undo.changedItems, [{ feedId: 'one', itemId: 'untouched' }]);
+    assert.equal(chromeMock.storage.local.data.items_one['opened-later'].read, true);
+    assert.equal(chromeMock.storage.local.data.items_one['marked-again'].read, true);
+    assert.equal(chromeMock.storage.local.data.items_one.untouched.read, false);
+    assert.equal(chromeMock.state.badgeText, '1');
+
+    await chromeMock.sendMessage({ type: 'UNDO_MARK_ALL_READ', items: later.changedItems });
+    assert.equal(chromeMock.storage.local.data.items_one['marked-again'].read, false);
+    assert.equal(chromeMock.state.badgeText, '2');
+});
+
+test('bulk read during refresh preserves read state while later arrivals stay unread', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', url: 'https://one.test/rss', title: 'One' }, [{ id: 'existing', read: false }]);
+    let fetchStarted;
+    const started = new Promise(resolve => { fetchStarted = resolve; });
+    let releaseFetch;
+    const fetched = new Promise(resolve => { releaseFetch = resolve; });
+    globalThis.fetch = async () => { fetchStarted(); return fetched; };
+
+    const refresh = refreshAllFeeds();
+    await started;
+    await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+    releaseFetch(responseFor('new-arrival'));
+    await refresh;
+    assert.equal(chromeMock.storage.local.data.items_one.existing.read, true);
+    assert.equal(chromeMock.storage.local.data.items_one['new-arrival'].read, false);
+    assert.equal(chromeMock.state.badgeText, '1');
+});
+
+test('failed bulk writes report errors, preserve status, and allow retry', async () => {
+    await resetStorage();
+    seedSubscription({ id: 'one', title: 'One' }, [{ id: 'article', read: false }]);
+    chromeMock.storage.local.failNextSet(new Error('local storage unavailable'));
+    const failed = await suppressConsoleError(() => chromeMock.sendMessage({ type: 'MARK_ALL_READ' }));
+    assert.equal(failed.success, false);
+    assert.match(failed.error, /local storage unavailable/);
+    assert.equal(chromeMock.storage.local.data.items_one.article.read, false);
+    const retry = await chromeMock.sendMessage({ type: 'MARK_ALL_READ' });
+    assert.equal(retry.success, true);
+    assert.equal(chromeMock.storage.local.data.items_one.article.read, true);
+});
+
+test('invalid bulk scopes and undo requests report failure', async () => {
+    await resetStorage();
+    const missing = await suppressConsoleError(() => chromeMock.sendMessage({ type: 'MARK_ALL_READ', feedId: 'missing' }));
+    assert.equal(missing.success, false);
+    assert.match(missing.error, /Feed not found/);
+    const invalid = await chromeMock.sendMessage({ type: 'UNDO_MARK_ALL_READ', items: [{}] });
+    assert.equal(invalid.success, false);
+    assert.match(invalid.error, /Article references/);
 });
 
 test('concurrent add, delete, and star messages commit without lost collection updates', async () => {

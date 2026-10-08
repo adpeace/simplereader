@@ -19,7 +19,10 @@ const articleKey = (itemId, feedId) => JSON.stringify([feedId, itemId]);
 async function requestBackground(request) {
     const response = await chrome.runtime.sendMessage(request);
     if (!response?.success) {
-        const error = new Error(response?.error || 'The reader could not complete this action. Please try again.');
+        const detail = response == null
+            ? `The background worker returned no response for ${request.type}.`
+            : `The background worker returned an unexpected response for ${request.type}: ${JSON.stringify(response)}.`;
+        const error = new Error(response?.error || detail);
         error.code = response?.code;
         throw error;
     }
@@ -37,7 +40,7 @@ function stripHtml(html) {
 
 // Memoized per-article component. Only re-renders when its own props change,
 // so expanding one article doesn't re-render all others.
-const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, onToggle }) {
+const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, onToggle, onMarkRead, isSavingRead }) {
     const ref = useRef(null);
     const sourceUrl = getArticleUrl(item.link);
 
@@ -94,6 +97,18 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                 {feedTitle && <span className="feed-source">{feedTitle}</span>}
                 {feedTitle && pubDate && <span className="meta-sep">·</span>}
                 {pubDate && <time className="article-date">{pubDate}</time>}
+                <button
+                    className="article-read-btn"
+                    disabled={isSavingRead}
+                    title={`${item.read ? 'Mark unread' : 'Mark read'} (r when focused)`}
+                    aria-label={`${item.read ? 'Mark unread' : 'Mark read'}: ${item.title}`}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onMarkRead(item.id, item.feedId, !item.read);
+                    }}
+                >
+                    {item.read ? 'Mark unread' : 'Mark read'}
+                </button>
             </div>
 
             {/* Collapsed: cheap plain-text preview, no sanitization */}
@@ -137,6 +152,13 @@ function Dashboard() {
     const [actionError, setActionError] = useState('');
     const [selectedFeedId, setSelectedFeedId] = useState(null);
     const [expandedItems, setExpandedItems] = useState(new Set());
+    const expandedItemsRef = useRef(new Set());
+    const pendingReadRef = useRef(new Map());
+    const [pendingReadItems, setPendingReadItems] = useState(new Set());
+    const bulkReadInProgress = useRef(false);
+    const [isSavingBulkRead, setIsSavingBulkRead] = useState(false);
+    const [bulkReadStatus, setBulkReadStatus] = useState(null);
+    const [openFeedMenuId, setOpenFeedMenuId] = useState(null);
     const [page, setPage] = useState(1);
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -219,17 +241,106 @@ function Dashboard() {
         return `${Math.floor(diffHr / 24)}d ago`;
     }, [lastRefreshedAt, now]);
 
-    // useCallback makes the reference stable so ArticleItem's React.memo works correctly.
+    const itemsRequest = useRef(0);
+    const refreshItems = useCallback(async () => {
+        const request = ++itemsRequest.current;
+        const allItems = await getItems();
+        if (request === itemsRequest.current) setItems(allItems);
+    }, []);
+
+    const setItemRead = useCallback((itemId, feedId, isRead, queueIfPending = false) => {
+        const key = articleKey(itemId, feedId);
+        const pending = pendingReadRef.current.get(key);
+        if (pending && !queueIfPending) return pending;
+
+        // Explicit toggles ignore repeat input while saving; opening an article
+        // queues its read write after any pending unread write instead of losing it.
+        const operation = (pending || Promise.resolve()).then(async () => {
+            setActionError('');
+            await requestBackground({ type: 'MARK_READ', itemId, feedId, isRead });
+            // Read canonical storage rather than overwriting a newer change
+            // that another reader tab may have committed while awaiting a reply.
+            await refreshItems();
+        }).catch(error => {
+            setActionError(`Could not save read status: ${error.message}`);
+        }).finally(() => {
+            if (pendingReadRef.current.get(key) !== operation) return;
+            pendingReadRef.current.delete(key);
+            setPendingReadItems(new Set(pendingReadRef.current.keys()));
+        });
+        pendingReadRef.current.set(key, operation);
+        setPendingReadItems(new Set(pendingReadRef.current.keys()));
+        return operation;
+    }, [refreshItems]);
+
+    // Keep expansion independent of read state; collapsing must preserve a
+    // manual "mark unread". The ref also handles rapid clicks before rendering.
     const toggleExpand = useCallback((itemId, feedId) => {
         const key = articleKey(itemId, feedId);
-        setExpandedItems(prev => {
-            const next = new Set(prev);
-            next.has(key) ? next.delete(key) : next.add(key);
-            return next;
-        });
-        requestBackground({ type: 'MARK_READ', itemId, feedId })
-            .catch(error => setActionError(`Could not save read status: ${error.message}`));
-    }, []);
+        const next = new Set(expandedItemsRef.current);
+        const opening = !next.has(key);
+        opening ? next.add(key) : next.delete(key);
+        expandedItemsRef.current = next;
+        setExpandedItems(next);
+        if (opening) setItemRead(itemId, feedId, true, true);
+    }, [setItemRead]);
+
+    const closeFeedMenu = useCallback((restoreFocus = false) => {
+        if (restoreFocus && openFeedMenuId) {
+            document.getElementById(`feed-options-${openFeedMenuId}`)?.focus();
+        }
+        setOpenFeedMenuId(null);
+    }, [openFeedMenuId]);
+
+    const markAllAsRead = async (feedId = null) => {
+        if (bulkReadInProgress.current) return;
+        bulkReadInProgress.current = true;
+        setIsSavingBulkRead(true);
+        closeFeedMenu(true);
+        setActionError('');
+        try {
+            const { changedItems } = await requestBackground({ type: 'MARK_ALL_READ', feedId });
+            const count = changedItems.length;
+            setBulkReadStatus({
+                message: count ? `Marked ${count} ${count === 1 ? 'article' : 'articles'} as read${feedId ? ` in ${subMap[feedId]}` : ''}.` : 'No unread articles to mark.',
+                items: changedItems,
+            });
+        } catch (error) {
+            setActionError(`Could not mark articles as read: ${error.message}`);
+        } finally {
+            bulkReadInProgress.current = false;
+            setIsSavingBulkRead(false);
+        }
+    };
+
+    const undoBulkRead = async () => {
+        if (bulkReadInProgress.current || !bulkReadStatus?.items.length) return;
+        bulkReadInProgress.current = true;
+        setIsSavingBulkRead(true);
+        setActionError('');
+        try {
+            const { changedItems } = await requestBackground({ type: 'UNDO_MARK_ALL_READ', items: bulkReadStatus.items });
+            setBulkReadStatus({ message: `Restored ${changedItems.length} unread ${changedItems.length === 1 ? 'article' : 'articles'}.`, items: [] });
+        } catch (error) {
+            setActionError(`Could not undo read status: ${error.message}`);
+        } finally {
+            bulkReadInProgress.current = false;
+            setIsSavingBulkRead(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!openFeedMenuId) return;
+        const closeOutside = e => {
+            if (!e.target.closest('[data-feed-menu-open="true"]')) setOpenFeedMenuId(null);
+        };
+        document.addEventListener('pointerdown', closeOutside);
+        document.addEventListener('focusin', closeOutside);
+        return () => {
+            document.removeEventListener('pointerdown', closeOutside);
+            document.removeEventListener('focusin', closeOutside);
+        };
+    }, [openFeedMenuId]);
 
     const toggleStar = useCallback(async (feedId) => {
         setActionError('');
@@ -238,13 +349,6 @@ function Dashboard() {
         } catch (error) {
             setActionError(`Could not update this feed: ${error.message}`);
         }
-    }, []);
-
-    const itemsRequest = useRef(0);
-    const refreshItems = useCallback(async () => {
-        const request = ++itemsRequest.current;
-        const allItems = await getItems();
-        if (request === itemsRequest.current) setItems(allItems);
     }, []);
 
     useEffect(() => observeAppearance(setSettings, error => {
@@ -293,10 +397,11 @@ function Dashboard() {
     }, [refreshItems]);
 
     // Keyboard navigation: j/k or arrows wrap focus, Enter to expand/collapse,
-    // o to open the focused article in a background tab, Escape to close modal.
+    // r toggles read status, o opens the original, Escape closes menus/modals.
     useEffect(() => {
         const handler = (e) => {
             if (e.key === 'Escape') {
+                closeFeedMenu(true);
                 setShowSettings(false);
                 return;
             }
@@ -315,6 +420,12 @@ function Dashboard() {
             } else if (e.key === 'Enter' && focusedIndex !== null) {
                 const item = visibleItems[focusedIndex];
                 if (item) toggleExpand(item.id, item.feedId);
+            } else if (e.key === 'r' && !e.repeat && focusedIndex !== null && !bulkReadInProgress.current) {
+                const item = visibleItems[focusedIndex];
+                if (item) {
+                    e.preventDefault();
+                    setItemRead(item.id, item.feedId, !item.read);
+                }
             } else if (e.key === 'o' && !e.repeat && focusedIndex !== null) {
                 const item = visibleItems[focusedIndex];
                 const url = getArticleUrl(item?.link);
@@ -327,7 +438,7 @@ function Dashboard() {
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [focusedIndex, visibleItems, toggleExpand, showSettings]);
+    }, [focusedIndex, visibleItems, toggleExpand, setItemRead, showSettings, closeFeedMenu]);
 
     const handleSaveSettings = async (patch) => {
         if (settingsSaveInProgress.current) return;
@@ -352,7 +463,7 @@ function Dashboard() {
         setRefreshStatus(null);
         try {
             const response = await chrome.runtime.sendMessage({ type: 'REFRESH_FEEDS' });
-            if (!response) throw new Error('No response from the reader. Please try again.');
+            if (!response) throw new Error('The background worker returned no response for REFRESH_FEEDS.');
             const errors = (response.errors || []).map(failure => `${failure.title}: ${failure.error}`).join('; ');
             if (response.status === 'error' || response.success === false) {
                 throw new Error(errors || response.error || 'No feeds could be refreshed.');
@@ -439,6 +550,7 @@ function Dashboard() {
 
     const selectFeed = (feedId) => {
         setSelectedFeedId(feedId);
+        setOpenFeedMenuId(null);
         setSidebarOpen(false);
         setPage(1);
         setFocusedIndex(null);
@@ -489,27 +601,24 @@ function Dashboard() {
                     <ul className="feed-list">
                         <li
                             className={`feed-item ${!selectedFeedId ? 'active' : ''}`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => selectFeed(null)}
-                            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectFeed(null); } }}
                         >
-                            <span className="feed-item-title">All Articles</span>
-                            {totalUnread > 0 && <span className="feed-unread">{totalUnread}</span>}
+                            <button className="feed-select" onClick={() => selectFeed(null)} aria-current={!selectedFeedId ? 'page' : undefined}>
+                                <span className="feed-item-title">All Articles</span>
+                                {totalUnread > 0 && <span className="feed-unread">{totalUnread}</span>}
+                            </button>
                         </li>
                         {sortedSubscriptions.map(sub => (
                             <li
                                 key={sub.id}
                                 className={`feed-item ${selectedFeedId === sub.id ? 'active' : ''}`}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => selectFeed(sub.id)}
-                                onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectFeed(sub.id); } }}
+                                data-feed-menu-open={openFeedMenuId === sub.id}
                             >
-                                <span className="feed-item-title">{sub.title}</span>
-                                {unreadByFeed[sub.id] > 0 && (
-                                    <span className="feed-unread">{unreadByFeed[sub.id]}</span>
-                                )}
+                                <button className="feed-select" onClick={() => selectFeed(sub.id)} aria-current={selectedFeedId === sub.id ? 'page' : undefined}>
+                                    <span className="feed-item-title">{sub.title}</span>
+                                    {unreadByFeed[sub.id] > 0 && (
+                                        <span className="feed-unread">{unreadByFeed[sub.id]}</span>
+                                    )}
+                                </button>
                                 <button
                                     className={`feed-item-star ${sub.starred ? 'starred' : ''}`}
                                     onClick={(e) => { e.stopPropagation(); toggleStar(sub.id); }}
@@ -518,6 +627,26 @@ function Dashboard() {
                                 >
                                     {sub.starred ? '★' : '☆'}
                                 </button>
+                                <button
+                                    id={`feed-options-${sub.id}`}
+                                    className="feed-options-btn"
+                                    aria-label={`Options for ${sub.title}`}
+                                    aria-expanded={openFeedMenuId === sub.id}
+                                    aria-controls={`feed-menu-${sub.id}`}
+                                    onClick={() => setOpenFeedMenuId(current => current === sub.id ? null : sub.id)}
+                                >
+                                    ⋯
+                                </button>
+                                {openFeedMenuId === sub.id && (
+                                    <div className="feed-menu-panel" id={`feed-menu-${sub.id}`}>
+                                        <button
+                                            disabled={isSavingBulkRead || !unreadByFeed[sub.id]}
+                                            onClick={() => markAllAsRead(sub.id)}
+                                        >
+                                            Mark feed as read
+                                        </button>
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -551,6 +680,14 @@ function Dashboard() {
                         <span className="article-count">{displayItems.length} articles</span>
                     )}
                     <div className="header-refresh">
+                        <button
+                            className="bulk-read-btn"
+                            disabled={isSavingBulkRead || !(selectedFeedId ? unreadByFeed[selectedFeedId] : totalUnread)}
+                            title={selectedFeedId ? 'Mark all cached articles in this feed as read, including articles hidden by search' : 'Mark all cached articles across all feeds as read, including articles hidden by search'}
+                            onClick={() => markAllAsRead(selectedFeedId)}
+                        >
+                            {selectedFeedId ? 'Mark feed as read' : 'Mark all as read'}
+                        </button>
                         <input
                             type="search"
                             className="search-input"
@@ -577,6 +714,14 @@ function Dashboard() {
                 </header>
 
                 {!showSettings && actionError && <p className="reader-status" role="alert">{actionError}</p>}
+                {bulkReadStatus && (
+                    <div className="reader-status bulk-read-status" role="status">
+                        <span>{bulkReadStatus.message}</span>
+                        {bulkReadStatus.items.length > 0 && (
+                            <button className="bulk-read-btn" disabled={isSavingBulkRead} onClick={undoBulkRead}>Undo</button>
+                        )}
+                    </div>
+                )}
                 {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
 
                 <div className="article-list">
@@ -598,6 +743,8 @@ function Dashboard() {
                                 isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
                                 isFocused={focusedIndex === index}
                                 onToggle={toggleExpand}
+                                onMarkRead={setItemRead}
+                                isSavingRead={isSavingBulkRead || pendingReadItems.has(articleKey(item.id, item.feedId))}
                             />
                         ))}
 

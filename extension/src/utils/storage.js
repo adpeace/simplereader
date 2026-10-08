@@ -197,8 +197,54 @@ export async function markItemRead(itemId, feedId, isRead = true) {
 
     if (currentItems[itemId]) {
         currentItems[itemId].read = isRead;
+        // A later explicit read/unread action takes precedence over bulk Undo,
+        // even if it reaffirms the article's current state in another tab.
+        delete currentItems[itemId].bulkReadToken;
         await chrome.storage.local.set({ [key]: currentItems });
     }
+}
+
+// Call from the worker's commit queue so refreshes and manual changes cannot
+// overwrite each other. Only changed feed records are written, in one batch.
+async function updateReadState(feedIds, isRead, selectedIds = null, bulkReadToken = null) {
+    const keys = [...new Set(feedIds)].map(feedId => `items_${feedId}`);
+    if (keys.length === 0) return [];
+    const data = await chrome.storage.local.get(keys);
+    const updates = {};
+    const changedItems = [];
+
+    for (const feedId of new Set(feedIds)) {
+        const key = `items_${feedId}`;
+        const items = data[key] || {};
+        for (const [itemId, item] of Object.entries(items)) {
+            if (selectedIds && (!selectedIds.get(feedId)?.has(itemId) ||
+                item.bulkReadToken !== selectedIds.get(feedId).get(itemId))) continue;
+            if (Boolean(item.read) === isRead) continue;
+            item.read = isRead;
+            if (isRead) item.bulkReadToken = bulkReadToken;
+            else delete item.bulkReadToken;
+            changedItems.push({ feedId, itemId, ...(isRead ? { bulkReadToken } : {}) });
+            updates[key] = items;
+        }
+    }
+
+    if (changedItems.length > 0) await chrome.storage.local.set(updates);
+    return changedItems;
+}
+
+/** Mark all retained articles in the specified feeds read. */
+export async function markFeedsRead(feedIds) {
+    return updateReadState(feedIds, true, null, crypto.randomUUID());
+}
+
+/** Restore only articles still carrying this bulk action's token. */
+export async function restoreUnreadItems(itemRefs) {
+    const selectedIds = new Map();
+    for (const { feedId, itemId, bulkReadToken } of itemRefs) {
+        if (!selectedIds.has(feedId)) selectedIds.set(feedId, new Map());
+        selectedIds.get(feedId).set(String(itemId), bulkReadToken);
+    }
+    return updateReadState([...selectedIds.keys()], false, selectedIds);
 }
 
 /**

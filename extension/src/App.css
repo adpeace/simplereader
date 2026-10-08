@@ -251,6 +251,7 @@
 
 .feed-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   padding: 7px 8px 7px 16px;
@@ -260,6 +261,63 @@
   cursor: pointer;
   border-left: 2px solid transparent;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.feed-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feed-options-btn {
+  border: 0;
+  background: transparent;
+  color: var(--sidebar-text);
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.feed-options-btn:hover,
+.feed-options-btn[aria-expanded="true"] {
+  color: var(--sidebar-hover);
+  background: var(--sidebar-hover-bg);
+}
+
+.feed-menu-panel {
+  flex-basis: 100%;
+  padding: 4px 0;
+}
+
+.feed-menu-panel button {
+  width: 100%;
+  border: 1px solid var(--sidebar-border);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-hover);
+  font: inherit;
+  padding: 10px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feed-menu-panel button:hover:not(:disabled) {
+  background: var(--sidebar-hover-bg);
+}
+
+.feed-menu-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .feed-item-title {
@@ -330,6 +388,7 @@
   border-bottom: 2px solid var(--ink);
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 16px;
 }
@@ -368,8 +427,48 @@
 .header-refresh {
   margin-left: auto;
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
+}
+
+.article-read-btn,
+.bulk-read-btn {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-mid);
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  line-height: 1.4;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.article-read-btn {
+  margin-left: auto;
+}
+
+.article-read-btn:hover:not(:disabled),
+.bulk-read-btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink-mid);
+  background: var(--paper-alt);
+}
+
+.article-read-btn:disabled,
+.bulk-read-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bulk-read-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .last-updated {
@@ -955,6 +1054,18 @@
 
     .content-header {
         padding: 16px 20px 14px;
+    }
+
+    .header-refresh {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .search-input,
+    .search-input:focus {
+        flex: 1;
+        min-width: 100px;
+        width: auto;
     }
 
     .article-list {

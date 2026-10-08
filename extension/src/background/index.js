@@ -6,6 +6,8 @@ import {
     removeSubscription,
     saveItems,
     markItemRead,
+    markFeedsRead,
+    restoreUnreadItems,
     getItems,
     getSettings,
     saveLastRefreshed,
@@ -109,6 +111,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.type === 'MARK_READ') {
         return reportResponse(markRead(request), sendResponse, request.type);
+    }
+
+    if (request.type === 'MARK_ALL_READ') {
+        return reportResponse(markAllRead(request.feedId), sendResponse, request.type);
+    }
+
+    if (request.type === 'UNDO_MARK_ALL_READ') {
+        return reportResponse(undoMarkAllRead(request.items), sendResponse, request.type);
     }
 });
 
@@ -284,6 +294,36 @@ async function markRead(request) {
         await markItemRead(request.itemId, request.feedId, request.isRead ?? true);
         await updateBadge();
         return { success: true };
+    });
+}
+
+async function markAllRead(feedId = null) {
+    return enqueueCommit(async () => {
+        await migrateSubscriptions();
+        const subscriptions = await getSubscriptions();
+        if (feedId !== null && !subscriptions.some(sub => sub.id === feedId)) {
+            throw new Error('Feed not found');
+        }
+        const feedIds = feedId === null ? subscriptions.map(sub => sub.id) : [feedId];
+        const changedItems = await markFeedsRead(feedIds);
+        await updateBadge();
+        return { success: true, changedItems };
+    });
+}
+
+async function undoMarkAllRead(items) {
+    if (!Array.isArray(items) || items.some(item => !item ||
+        typeof item.feedId !== 'string' || typeof item.itemId !== 'string' ||
+        typeof item.bulkReadToken !== 'string')) {
+        throw new Error('Article references are required');
+    }
+    return enqueueCommit(async () => {
+        await migrateSubscriptions();
+        const subscriptions = await getSubscriptions();
+        const feedIds = new Set(subscriptions.map(sub => sub.id));
+        const changedItems = await restoreUnreadItems(items.filter(item => feedIds.has(item.feedId)));
+        await updateBadge();
+        return { success: true, changedItems };
     });
 }
 

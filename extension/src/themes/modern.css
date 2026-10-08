@@ -149,6 +149,21 @@
   font-size: 1rem;
 }
 
+[data-design="modern"] .feed-select {
+  min-height: 36px;
+}
+
+[data-design="modern"] .feed-options-btn {
+  min-width: 32px;
+  min-height: 36px;
+}
+
+[data-design="modern"] :is(.article-read-btn, .bulk-read-btn, .feed-menu-panel button) {
+  min-height: 44px;
+  font-size: 0.875rem;
+  border-radius: 6px;
+}
+
 [data-design="modern"] :is(.settings-btn, .refresh-btn, .menu-btn, .modal-close) {
   min-width: 44px;
   min-height: 44px;
