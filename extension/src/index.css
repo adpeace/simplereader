@@ -63,14 +63,38 @@
   --sidebar-border: #1D2232;
   --sidebar-text:   #6A7A92;
   --sidebar-hover:  #B8C8D8;
-  --red:            #C42020;
-  --red-hover:      #A01818;
+  --accent:            #C42020;
+  --accent-hover:      #A01818;
   --rule:           #C8BCA0;
   --rule-light:     #DDD4BC;
 
   --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --font-mono:    'DM Mono', 'Courier New', monospace;
   --font-body:    'Lora', Georgia, serif;
+  --font-ui:      var(--font-mono);
+
+  --popup-brand: #E0D4B8;
+  --popup-border: #252B3C;
+  --sidebar-brand: #DDD0B8;
+  --sidebar-muted: #3A4258;
+  --sidebar-input-text: #8090A8;
+  --sidebar-placeholder: #303848;
+  --sidebar-button-text: #485868;
+  --sidebar-focus: #2E3C50;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.03);
+  --sidebar-action-bg: rgba(196, 32, 32, 0.12);
+  --sidebar-action-border: rgba(196, 32, 32, 0.4);
+  --sidebar-action-text: #D85050;
+  --sidebar-active-text: #D86060;
+  --sidebar-active-bg: rgba(196, 32, 32, 0.08);
+  --sidebar-active-count: rgba(216, 96, 96, 0.6);
+  --sidebar-error: #F4AAAA;
+  --pin-color: #C4A840;
+  --on-accent: #FFF;
+  --danger: #C42020;
+  --modal-backdrop: rgba(12, 9, 6, 0.65);
+  --sidebar-backdrop: rgba(0, 0, 0, 0.45);
+  --reading-width: none;
 }
 
 [data-theme="dark"] {
@@ -91,10 +115,13 @@
   box-sizing: border-box;
 }
 
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   background: var(--paper);
   color: var(--ink);
   font-size: 13px;

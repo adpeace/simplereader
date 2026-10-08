@@ -1,6 +1,12 @@
 import './App.css'
+import { useEffect, useState } from 'react'
+import { observeAppearance } from './utils/appearance'
 
 function App() {
+  const [appearanceError, setAppearanceError] = useState('');
+  useEffect(() => observeAppearance(undefined, error => {
+    setAppearanceError(`Could not load appearance: ${error.message}`);
+  }), []);
   const openDashboard = () => {
     chrome.tabs.create({ url: 'dashboard.html' });
   };
@@ -14,6 +20,7 @@ function App() {
       <button className="popup-open-btn" onClick={openDashboard}>
         Open Reader →
       </button>
+      {appearanceError && <p className="popup-error" role="alert">{appearanceError}</p>}
     </div>
   )
 }

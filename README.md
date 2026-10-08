@@ -13,7 +13,9 @@ Privacy-focused, local-first RSS reader. No account required.
 - All data stored **locally in Chrome** — nothing leaves your browser
 - **Cross-device sync** via Chrome's built-in Sync (no account needed beyond your Google account)
 - **OPML import and export** — bring your existing subscriptions
-- **Dark mode** and font-size settings
+- **Default and Modern themes** with Light, Dark, and System color modes and font-size settings
+- **Focused reading** in Modern — sans serif text, a centered reading column, and neutral colors
+- **Unread article labels** make read status easy to identify
 - **Full-text search** across all loaded articles
 - **Keyboard navigation** (j/k or arrow keys, Enter to expand, o to open the selected article in a background tab)
 - **Original article links** beside each title — open articles in new tabs directly from the list
@@ -88,6 +90,7 @@ npm test         # Feed parsing, storage migration, and concurrency regressions
 - **Feed limits** — Fetches have a 10-second deadline through body download and a 5 MiB maximum body size. Feeds declaring a DOCTYPE are rejected to prevent custom XML entity processing.
 - **Feed parsing** — `fast-xml-parser` handles RSS 2.0, Atom, RSS 1.0 (RDF)
 - **Content safety** — HTML from feeds sanitized with `DOMPurify` before rendering
+- **Appearance** — `src/utils/appearance.js` applies saved preferences in the reader and popup and follows Chrome Sync and system color changes. `designTheme` selects the visual design; the existing `theme` preference selects Light/Dark/System. Design styling lives in CSS and is independent of article expansion, view modes, and filtering. Modern overrides shared theme variables in `src/themes/modern.css`; missing or unknown designs fall back to Default.
 
 ---
 

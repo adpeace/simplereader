@@ -3,6 +3,8 @@
  * Unified wrapper for chrome.storage to handle Sync vs Local separation.
  */
 
+import { normalizeSettings } from './settings.js';
+
 const STORAGE_KEYS = {
     SETTINGS: 'settings',
     SUBSCRIPTIONS: 'subscriptions',
@@ -17,12 +19,7 @@ export const SUBSCRIPTION_PREFIX = 'subscription_';
  */
 export async function getSettings() {
     const data = await chrome.storage.sync.get([STORAGE_KEYS.SETTINGS]);
-    return data[STORAGE_KEYS.SETTINGS] || {
-        refreshInterval: 30, // minutes
-        theme: 'system',
-        fontSize: 'medium',
-        showUnreadOnly: false
-    };
+    return normalizeSettings(data[STORAGE_KEYS.SETTINGS]);
 }
 
 /**
@@ -30,6 +27,13 @@ export async function getSettings() {
  */
 export async function saveSettings(settings) {
     await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: settings });
+}
+
+/** Update preferences against the latest saved settings, retaining other fields. */
+export async function updateSettings(patch) {
+    const settings = normalizeSettings({ ...await getSettings(), ...patch });
+    await saveSettings(settings);
+    return settings;
 }
 
 function getSubscriptionEntries(data) {

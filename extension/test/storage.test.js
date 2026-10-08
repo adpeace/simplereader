@@ -4,6 +4,8 @@ import {
     getSubscriptions,
     migrateSubscriptions,
     SUBSCRIPTION_PREFIX,
+    getSettings,
+    updateSettings,
 } from '../src/utils/storage.js';
 
 function createSyncArea(initial = {}) {
@@ -42,6 +44,50 @@ function createSyncArea(initial = {}) {
 function setChrome(sync) {
     globalThis.chrome = { storage: { sync } };
 }
+
+test('legacy settings acquire a default design without losing color, size, or future view preferences', async () => {
+    const sync = createSyncArea({ settings: { theme: 'dark', fontSize: 'large', refreshInterval: 45, viewMode: 'headlines', showUnreadOnly: true } });
+    setChrome(sync);
+    const settings = await getSettings();
+    assert.equal(settings.designTheme, 'default');
+    assert.equal(settings.theme, 'dark');
+    assert.equal(settings.fontSize, 'large');
+    assert.equal(settings.viewMode, 'headlines');
+    assert.equal(sync.setCalls.length, 0);
+
+    await updateSettings({ designTheme: 'modern' });
+    assert.deepEqual(await getSettings(), { ...settings, designTheme: 'modern' });
+});
+
+test('unknown appearance values fall back to supported defaults', async () => {
+    setChrome(createSyncArea({ settings: { designTheme: 'removed-theme', theme: 'unknown', fontSize: 'huge' } }));
+    const settings = await getSettings();
+    assert.equal(settings.designTheme, 'default');
+    assert.equal(settings.theme, 'system');
+    assert.equal(settings.fontSize, 'medium');
+});
+
+test('failed preference writes retain the saved theme and report failure', async () => {
+    const sync = createSyncArea({ settings: { designTheme: 'default', theme: 'light' } });
+    setChrome(sync);
+    sync.failNextSet(new Error('sync unavailable'));
+    await assert.rejects(updateSettings({ designTheme: 'modern' }), /sync unavailable/);
+    assert.equal((await getSettings()).designTheme, 'default');
+    assert.equal((await getSettings()).theme, 'light');
+});
+
+test('appearance updates merge with the latest saved unrelated settings', async () => {
+    const sync = createSyncArea({ settings: { designTheme: 'modern', theme: 'system', viewMode: 'headlines' } });
+    setChrome(sync);
+    sync.data.settings.viewMode = 'preview';
+    sync.data.settings.showUnreadOnly = true;
+    await updateSettings({ fontSize: 'large' });
+    const settings = await getSettings();
+    assert.equal(settings.viewMode, 'preview');
+    assert.equal(settings.showUnreadOnly, true);
+    assert.equal(settings.designTheme, 'modern');
+    assert.equal(settings.fontSize, 'large');
+});
 
 test('migrates legacy subscriptions, preserves records, and lets per-record values win', async () => {
     const sync = createSyncArea({

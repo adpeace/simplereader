@@ -5,11 +5,13 @@ import {
     getSubscriptions, SUBSCRIPTION_PREFIX,
     getItems,
     getLastRefreshed,
-    getSettings, saveSettings,
+    updateSettings,
     getFeedValidators
 } from '../utils/storage';
 import { parseOPML, generateOPML } from '../utils/opml';
 import { getArticleUrl } from '../utils/links';
+import { DESIGN_THEMES, DEFAULT_SETTINGS } from '../utils/settings';
+import { applyAppearance, observeAppearance } from '../utils/appearance';
 
 const PAGE_SIZE = 50;
 const articleKey = (itemId, feedId) => JSON.stringify([feedId, itemId]);
@@ -31,13 +33,6 @@ function stripHtml(html) {
     const ta = document.createElement('textarea');
     ta.innerHTML = stripped;
     return ta.value;
-}
-
-function applyAppearance(cfg) {
-    const dark = cfg.theme === 'dark' ||
-        (cfg.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-fontsize', cfg.fontSize || 'medium');
 }
 
 // Memoized per-article component. Only re-renders when its own props change,
@@ -74,7 +69,7 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
     return (
         <article
             ref={ref}
-            className={`article-item${isExpanded ? ' expanded' : ''}${isFocused ? ' focused' : ''}`}
+            className={`article-item${item.read ? ' read' : ' unread'}${isExpanded ? ' expanded' : ''}${isFocused ? ' focused' : ''}`}
             onClick={() => onToggle(item.id, item.feedId)}
         >
             <h2 className="article-title">
@@ -95,6 +90,7 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
             </h2>
 
             <div className="article-meta">
+                {!item.read && <span className="article-unread-label">Unread</span>}
                 {feedTitle && <span className="feed-source">{feedTitle}</span>}
                 {feedTitle && pubDate && <span className="meta-sep">·</span>}
                 {pubDate && <time className="article-date">{pubDate}</time>}
@@ -142,7 +138,9 @@ function Dashboard() {
     const [selectedFeedId, setSelectedFeedId] = useState(null);
     const [expandedItems, setExpandedItems] = useState(new Set());
     const [page, setPage] = useState(1);
-    const [settings, setSettings] = useState({ theme: 'system', fontSize: 'medium' });
+    const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const settingsSaveInProgress = useRef(false);
     const [focusedIndex, setFocusedIndex] = useState(null);
 
     const [showSettings, setShowSettings] = useState(false);
@@ -249,16 +247,18 @@ function Dashboard() {
         if (request === itemsRequest.current) setItems(allItems);
     }, []);
 
+    useEffect(() => observeAppearance(setSettings, error => {
+        setActionError(`Could not load appearance settings: ${error.message}`);
+    }), []);
+
     useEffect(() => {
         async function init() {
-            const [subs, ts, cfg, meta] = await Promise.all([
-                getSubscriptions(), getLastRefreshed(), getSettings(), getFeedValidators()
+            const [subs, ts, meta] = await Promise.all([
+                getSubscriptions(), getLastRefreshed(), getFeedValidators()
             ]);
             setSubscriptions(subs);
             setLastRefreshedAt(ts);
-            setSettings(cfg);
             setFeedMeta(meta);
-            applyAppearance(cfg);
             await refreshItems();
         }
         init().catch(error => setActionError(`Could not load your reader: ${error.message}`));
@@ -326,13 +326,19 @@ function Dashboard() {
     }, [focusedIndex, visibleItems, toggleExpand, showSettings]);
 
     const handleSaveSettings = async (patch) => {
-        const updated = { ...settings, ...patch };
+        if (settingsSaveInProgress.current) return;
+        settingsSaveInProgress.current = true;
+        setIsSavingSettings(true);
+        setActionError('');
         try {
-            await saveSettings(updated);
+            const updated = await updateSettings(patch);
             setSettings(updated);
             applyAppearance(updated);
         } catch (error) {
             setActionError(`Could not save settings: ${error.message}`);
+        } finally {
+            settingsSaveInProgress.current = false;
+            setIsSavingSettings(false);
         }
     };
 
@@ -570,33 +576,35 @@ function Dashboard() {
                 {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
 
                 <div className="article-list">
-                    {displayItems.length === 0 && (
-                        <div className="empty-state">
-                            <p className="empty-headline">Nothing here yet.</p>
-                            <p className="empty-body">
-                                Add an RSS feed above, or import an OPML file via Settings.
-                            </p>
-                        </div>
-                    )}
+                    <div className="article-column">
+                        {displayItems.length === 0 && (
+                            <div className="empty-state">
+                                <p className="empty-headline">Nothing here yet.</p>
+                                <p className="empty-body">
+                                    Add an RSS feed above, or import an OPML file via Settings.
+                                </p>
+                            </div>
+                        )}
 
-                    {visibleItems.map((item, index) => (
-                        <ArticleItem
-                            key={articleKey(item.id, item.feedId)}
-                            item={item}
-                            feedTitle={subMap[item.feedId]}
-                            isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
-                            isFocused={focusedIndex === index}
-                            onToggle={toggleExpand}
-                        />
-                    ))}
+                        {visibleItems.map((item, index) => (
+                            <ArticleItem
+                                key={articleKey(item.id, item.feedId)}
+                                item={item}
+                                feedTitle={subMap[item.feedId]}
+                                isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
+                                isFocused={focusedIndex === index}
+                                onToggle={toggleExpand}
+                            />
+                        ))}
 
-                    {hasMore && (
-                        <div className="load-more-container">
-                            <button className="load-more-btn" onClick={() => setPage(p => p + 1)}>
-                                Load more — {displayItems.length - visibleItems.length} remaining
-                            </button>
-                        </div>
-                    )}
+                        {hasMore && (
+                            <div className="load-more-container">
+                                <button className="load-more-btn" onClick={() => setPage(p => p + 1)}>
+                                    Load more — {displayItems.length - visibleItems.length} remaining
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </main>
 
@@ -633,26 +641,42 @@ function Dashboard() {
 
                         <section className="modal-section">
                             <h3 className="modal-section-title">Appearance</h3>
-                            <p className="modal-section-title" style={{ marginBottom: 8 }}>Theme</p>
-                            <div className="modal-actions" style={{ marginBottom: 16 }}>
-                                {['light', 'dark', 'system'].map(t => (
-                                    <button key={t}
-                                        className={`modal-btn ${settings.theme === t ? 'primary' : 'secondary'}`}
-                                        onClick={() => handleSaveSettings({ theme: t })}>
-                                        {t[0].toUpperCase() + t.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
-                            <p className="modal-section-title" style={{ marginBottom: 8 }}>Font Size</p>
-                            <div className="modal-actions">
-                                {['small', 'medium', 'large'].map(s => (
-                                    <button key={s}
-                                        className={`modal-btn ${settings.fontSize === s ? 'primary' : 'secondary'}`}
-                                        onClick={() => handleSaveSettings({ fontSize: s })}>
-                                        {s[0].toUpperCase() + s.slice(1)}
-                                    </button>
-                                ))}
-                            </div>
+                            <fieldset className="appearance-options" disabled={isSavingSettings}>
+                                <label className="appearance-label" htmlFor="design-theme">Theme</label>
+                                <select
+                                    id="design-theme"
+                                    className="theme-select"
+                                    value={settings.designTheme}
+                                    onChange={e => handleSaveSettings({ designTheme: e.target.value })}
+                                >
+                                    {DESIGN_THEMES.map(design => (
+                                        <option key={design.id} value={design.id}>{design.label}</option>
+                                    ))}
+                                </select>
+                                <p className="appearance-description">Modern uses sans serif text, a focused reading column, and neutral colors.</p>
+                                <p className="appearance-label" id="color-mode-label">Color mode</p>
+                                <div className="modal-actions" role="group" aria-labelledby="color-mode-label">
+                                    {['light', 'dark', 'system'].map(t => (
+                                        <button key={t}
+                                            aria-pressed={settings.theme === t}
+                                            className={`modal-btn ${settings.theme === t ? 'primary' : 'secondary'}`}
+                                            onClick={() => handleSaveSettings({ theme: t })}>
+                                            {t[0].toUpperCase() + t.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="appearance-label" id="font-size-label">Font size</p>
+                                <div className="modal-actions" role="group" aria-labelledby="font-size-label">
+                                    {['small', 'medium', 'large'].map(s => (
+                                        <button key={s}
+                                            aria-pressed={settings.fontSize === s}
+                                            className={`modal-btn ${settings.fontSize === s ? 'primary' : 'secondary'}`}
+                                            onClick={() => handleSaveSettings({ fontSize: s })}>
+                                            {s[0].toUpperCase() + s.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </fieldset>
                         </section>
 
                         <section className="modal-section">

@@ -1,0 +1,232 @@
+/* Design is independent of color mode and future article view/filter settings. */
+[data-design="modern"] {
+  --paper: #FAFAF8;
+  --paper-alt: #EEEFEB;
+  --ink: #252724;
+  --ink-mid: #454944;
+  --ink-light: #626660;
+  --rule: #D4D7D0;
+  --rule-light: #E4E6E0;
+  --accent: #3D5550;
+  --accent-hover: #2C403B;
+  --on-accent: #FFFFFF;
+  --danger: #A63737;
+  --sidebar-bg: #F1F2EE;
+  --sidebar-border: #D4D7D0;
+  --sidebar-text: #454944;
+  --sidebar-hover: #252724;
+  --sidebar-brand: #252724;
+  --sidebar-muted: #626660;
+  --sidebar-input-text: #252724;
+  --sidebar-placeholder: #626660;
+  --sidebar-button-text: #454944;
+  --sidebar-focus: #3D5550;
+  --sidebar-hover-bg: #E7E9E2;
+  --sidebar-action-bg: #E0E5DD;
+  --sidebar-action-border: #3D5550;
+  --sidebar-action-text: #252724;
+  --sidebar-active-text: #252724;
+  --sidebar-active-bg: #DFE4DA;
+  --sidebar-active-count: #3D5550;
+  --sidebar-error: #A63737;
+  --popup-brand: #252724;
+  --popup-border: #A9B0A4;
+  --pin-color: #626660;
+  --modal-backdrop: rgba(20, 24, 21, 0.45);
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: var(--font-ui);
+  --font-body: var(--font-ui);
+  --reading-width: 46rem;
+}
+
+[data-design="modern"][data-theme="dark"] {
+  --paper: #1C1F1D;
+  --paper-alt: #2A2E2B;
+  --ink: #E5E7E1;
+  --ink-mid: #C4CAC2;
+  --ink-light: #A5AEA2;
+  --rule: #4A514A;
+  --rule-light: #343B34;
+  --accent: #B4CBC1;
+  --accent-hover: #D0E1D8;
+  --on-accent: #1C1F1D;
+  --danger: #F0A4A4;
+  --sidebar-bg: #232723;
+  --sidebar-border: #4A514A;
+  --sidebar-text: #C4CAC2;
+  --sidebar-hover: #E5E7E1;
+  --sidebar-brand: #E5E7E1;
+  --sidebar-muted: #A5AEA2;
+  --sidebar-input-text: #E5E7E1;
+  --sidebar-placeholder: #A5AEA2;
+  --sidebar-button-text: #C4CAC2;
+  --sidebar-focus: #B4CBC1;
+  --sidebar-hover-bg: #2F362F;
+  --sidebar-action-bg: #354135;
+  --sidebar-action-border: #B4CBC1;
+  --sidebar-action-text: #E5E7E1;
+  --sidebar-active-text: #E5E7E1;
+  --sidebar-active-bg: #354135;
+  --sidebar-active-count: #B4CBC1;
+  --sidebar-error: #F0A4A4;
+  --popup-brand: #E5E7E1;
+  --popup-border: #747E71;
+  --pin-color: #A5AEA2;
+}
+
+[data-design="modern"][data-fontsize="small"] { --article-fs: 0.95rem; }
+[data-design="modern"][data-fontsize="medium"] { --article-fs: 1.075rem; }
+[data-design="modern"][data-fontsize="large"] { --article-fs: 1.2rem; }
+
+[data-design="modern"] :is(.section-title, .modal-title, .empty-headline) {
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+[data-design="modern"] .masthead-title {
+  font-weight: 500;
+}
+
+[data-design="modern"] .masthead-icon {
+  filter: grayscale(1);
+}
+
+[data-design="modern"] .content-header {
+  flex-wrap: wrap;
+  align-items: center;
+  border-bottom: 1px solid var(--rule);
+  gap: 12px;
+}
+
+[data-design="modern"] .header-refresh {
+  flex-wrap: wrap;
+}
+
+[data-design="modern"] .article-item {
+  padding: 28px 0;
+}
+
+[data-design="modern"] .article-title {
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+[data-design="modern"] .article-item.focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+  border-radius: 4px;
+}
+
+[data-design="modern"] .article-body a {
+  text-underline-offset: 3px;
+}
+
+[data-design="modern"] :is(.feed-source, .article-date, .article-count, .last-updated, .feed-unread) {
+  font-size: 0.8rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+[data-design="modern"] .feed-source {
+  color: var(--ink-mid);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+[data-design="modern"] .feed-item {
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+
+[data-design="modern"] .feed-item-star {
+  opacity: 1;
+  min-width: 32px;
+  min-height: 36px;
+  font-size: 1rem;
+}
+
+[data-design="modern"] :is(.settings-btn, .refresh-btn, .menu-btn, .modal-close) {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 1.1rem;
+}
+
+[data-design="modern"] :is(.feed-url-input, .subscribe-btn, .search-input, .modal-btn, .delete-btn, .load-more-btn, .popup-open-btn) {
+  min-height: 44px;
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+  border-radius: 6px;
+}
+
+[data-design="modern"] .search-input {
+  width: 170px;
+}
+
+[data-design="modern"] .search-input:focus {
+  width: 170px;
+}
+
+[data-design="modern"] .read-more-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+[data-design="modern"] .modal {
+  border-radius: 10px;
+}
+
+[data-design="modern"] .modal-header {
+  border-bottom: 1px solid var(--rule);
+}
+
+[data-design="modern"] .modal-section-title {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+}
+
+[data-design="modern"] :is(.subscription-title, .import-status, .empty-body) {
+  font-size: 0.875rem;
+}
+
+[data-design="modern"] .subscription-title {
+  min-width: 0;
+  flex: 1;
+}
+
+[data-design="modern"] .subscription-item {
+  gap: 12px;
+}
+
+[data-design="modern"] .popup-masthead-sub {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 799px) {
+  [data-design="modern"] .header-refresh {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  [data-design="modern"] .search-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+}
+
+@media (max-width: 599px) {
+  [data-design="modern"] .modal-section { padding: 16px; }
+  [data-design="modern"] .modal-header { padding: 12px 16px; }
+  [data-design="modern"] .modal-actions { flex-wrap: wrap; }
+}
