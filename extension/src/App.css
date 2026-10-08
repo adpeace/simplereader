@@ -470,6 +470,9 @@
 }
 
 .article-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-family: var(--font-display);
   font-size: 1.2rem;
   font-weight: 600;
@@ -477,6 +480,36 @@
   margin: 0 0 9px;
   line-height: 1.3;
   transition: color 0.12s;
+}
+
+.article-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.article-source-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--red);
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.article-source-link:hover {
+  background: var(--paper-alt);
+}
+
+.article-source-link:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
 }
 
 .article-meta {

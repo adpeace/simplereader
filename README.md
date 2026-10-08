@@ -15,7 +15,8 @@ Privacy-focused, local-first RSS reader. No account required.
 - **OPML import and export** — bring your existing subscriptions
 - **Dark mode** and font-size settings
 - **Full-text search** across all loaded articles
-- **Keyboard navigation** (j/k or arrow keys, Enter to expand)
+- **Keyboard navigation** (j/k or arrow keys, Enter to expand, o to open the selected article in a background tab)
+- **Original article links** beside each title — open articles in new tabs directly from the list
 - **Starred/pinned feeds** float to the top of the sidebar
 - **Efficient conditional HTTP fetching** (ETag / Last-Modified)
 

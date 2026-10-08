@@ -9,6 +9,7 @@ import {
     getFeedValidators
 } from '../utils/storage';
 import { parseOPML, generateOPML } from '../utils/opml';
+import { getArticleUrl } from '../utils/links';
 
 const PAGE_SIZE = 50;
 const articleKey = (itemId, feedId) => JSON.stringify([feedId, itemId]);
@@ -43,6 +44,7 @@ function applyAppearance(cfg) {
 // so expanding one article doesn't re-render all others.
 const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, onToggle }) {
     const ref = useRef(null);
+    const sourceUrl = getArticleUrl(item.link);
 
     useEffect(() => {
         if (isFocused && ref.current) ref.current.scrollIntoView({ block: 'nearest' });
@@ -75,7 +77,22 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
             className={`article-item${isExpanded ? ' expanded' : ''}${isFocused ? ' focused' : ''}`}
             onClick={() => onToggle(item.id, item.feedId)}
         >
-            <h2 className="article-title">{item.title}</h2>
+            <h2 className="article-title">
+                <span className="article-title-text">{item.title}</span>
+                {sourceUrl && (
+                    <a
+                        href={sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="article-source-link"
+                        aria-label={`Open original article: ${item.title} (opens in a new tab)`}
+                        title="Open original article in a new tab"
+                    >
+                        <span aria-hidden="true">↗</span>
+                    </a>
+                )}
+            </h2>
 
             <div className="article-meta">
                 {feedTitle && <span className="feed-source">{feedTitle}</span>}
@@ -98,10 +115,10 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                 </div>
             )}
 
-            {isExpanded && item.link && (
+            {isExpanded && sourceUrl && (
                 <div className="article-actions">
                     <a
-                        href={item.link}
+                        href={sourceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -275,7 +292,8 @@ function Dashboard() {
         };
     }, [refreshItems]);
 
-    // Keyboard navigation: j/k or arrows to move focus, Enter to expand/collapse, Escape to close modal.
+    // Keyboard navigation: j/k or arrows to move focus, Enter to expand/collapse,
+    // o to open the focused article in a background tab, Escape to close modal.
     useEffect(() => {
         const handler = (e) => {
             if (e.key === 'Escape') {
@@ -293,6 +311,14 @@ function Dashboard() {
             } else if (e.key === 'Enter' && focusedIndex !== null) {
                 const item = visibleItems[focusedIndex];
                 if (item) toggleExpand(item.id, item.feedId);
+            } else if (e.key === 'o' && !e.repeat && focusedIndex !== null) {
+                const item = visibleItems[focusedIndex];
+                const url = getArticleUrl(item?.link);
+                if (url) {
+                    e.preventDefault();
+                    chrome.tabs.create({ url, active: false })
+                        .catch(error => setActionError(`Could not open this article: ${error.message}`));
+                }
             }
         };
         document.addEventListener('keydown', handler);
