@@ -104,7 +104,7 @@
 }
 
 [data-design="modern"] .article-item {
-  padding: 28px 0;
+  padding: 28px 16px;
 }
 
 [data-design="modern"] .article-title {
@@ -114,9 +114,10 @@
 }
 
 [data-design="modern"] .article-item.focused {
-  outline: 2px solid var(--accent);
-  outline-offset: 6px;
-  border-radius: 4px;
+  outline: none;
+  border-radius: 0;
+  background: var(--paper-alt);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 [data-design="modern"] .article-body a {
