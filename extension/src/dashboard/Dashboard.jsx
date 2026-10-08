@@ -40,7 +40,7 @@ function stripHtml(html) {
 
 // Memoized per-article component. Only re-renders when its own props change,
 // so expanding one article doesn't re-render all others.
-const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, onToggle, onMarkRead, isSavingRead }) {
+const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, isCompact, onToggle, onMarkRead, isSavingRead }) {
     const ref = useRef(null);
     const sourceUrl = getArticleUrl(item.link);
 
@@ -50,9 +50,9 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
 
     // Plain text excerpt for collapsed view — computed once, no sanitization.
     const textExcerpt = useMemo(() => {
-        if (item.content == null || item.content === '') return '';
+        if (isCompact || item.content == null || item.content === '') return '';
         return stripHtml(item.content).slice(0, 300);
-    }, [item.content]);
+    }, [isCompact, item.content]);
 
     // Sanitize only when expanded, and only once per item (memoized by isExpanded + content).
     const sanitizedContent = useMemo(() => {
@@ -76,6 +76,9 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
             onClick={() => onToggle(item.id, item.feedId)}
         >
             <h2 className="article-title">
+                {isCompact && !isExpanded && !item.read && (
+                    <span className="article-unread-dot" role="img" aria-label="Unread" />
+                )}
                 <span className="article-title-text">{item.title}</span>
                 {sourceUrl && (
                     <a
@@ -92,7 +95,7 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                 )}
             </h2>
 
-            <div className="article-meta">
+            {(!isCompact || isExpanded) && <div className="article-meta">
                 {!item.read && <span className="article-unread-label">Unread</span>}
                 {feedTitle && <span className="feed-source">{feedTitle}</span>}
                 {feedTitle && pubDate && <span className="meta-sep">·</span>}
@@ -109,10 +112,10 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
                 >
                     {item.read ? 'Mark unread' : 'Mark read'}
                 </button>
-            </div>
+            </div>}
 
             {/* Collapsed: cheap plain-text preview, no sanitization */}
-            {!isExpanded && textExcerpt && (
+            {!isCompact && !isExpanded && textExcerpt && (
                 <p className="article-preview">{textExcerpt}</p>
             )}
 
@@ -561,6 +564,7 @@ function Dashboard() {
         : 'Reading List';
 
     const siteLink = selectedFeedId ? (feedMeta[selectedFeedId]?.siteLink ?? null) : null;
+    const isCompact = settings.viewMode === 'headlines';
 
     return (
         <div className="dashboard-container">
@@ -681,6 +685,42 @@ function Dashboard() {
                     )}
                     <div className="header-refresh">
                         <button
+                            className="view-mode-btn"
+                            aria-label={isCompact ? 'Switch to preview view' : 'Switch to list view'}
+                            aria-controls="article-list"
+                            disabled={isSavingSettings}
+                            title={isCompact ? 'Switch to preview view' : 'Switch to list view'}
+                            onClick={() => handleSaveSettings({ viewMode: isCompact ? 'preview' : 'headlines' })}
+                        >
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                                focusable="false"
+                            >
+                                {isCompact ? (
+                                    <>
+                                        <rect x="3" y="3" width="18" height="8" rx="1.5" />
+                                        <rect x="3" y="13" width="18" height="8" rx="1.5" />
+                                        <path d="M7 6h10M7 8.5h6M7 16h10M7 18.5h6" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <circle cx="4" cy="6" r="1" />
+                                        <circle cx="4" cy="12" r="1" />
+                                        <circle cx="4" cy="18" r="1" />
+                                        <path d="M9 6h12M9 12h12M9 18h12" />
+                                    </>
+                                )}
+                            </svg>
+                        </button>
+                        <button
                             className="bulk-read-btn"
                             disabled={isSavingBulkRead || !(selectedFeedId ? unreadByFeed[selectedFeedId] : totalUnread)}
                             title={selectedFeedId ? 'Mark all cached articles in this feed as read, including articles hidden by search' : 'Mark all cached articles across all feeds as read, including articles hidden by search'}
@@ -724,7 +764,7 @@ function Dashboard() {
                 )}
                 {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
 
-                <div className="article-list">
+                <div id="article-list" className={`article-list${isCompact ? ' compact' : ''}`}>
                     <div className="article-column">
                         {displayItems.length === 0 && (
                             <div className="empty-state">
@@ -742,6 +782,7 @@ function Dashboard() {
                                 feedTitle={subMap[item.feedId]}
                                 isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
                                 isFocused={focusedIndex === index}
+                                isCompact={isCompact}
                                 onToggle={toggleExpand}
                                 onMarkRead={setItemRead}
                                 isSavingRead={isSavingBulkRead || pendingReadItems.has(articleKey(item.id, item.feedId))}

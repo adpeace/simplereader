@@ -158,13 +158,13 @@
   min-height: 36px;
 }
 
-[data-design="modern"] :is(.article-read-btn, .bulk-read-btn, .feed-menu-panel button) {
+[data-design="modern"] :is(.article-read-btn, .bulk-read-btn, .view-mode-btn, .feed-menu-panel button) {
   min-height: 44px;
   font-size: 0.875rem;
   border-radius: 6px;
 }
 
-[data-design="modern"] :is(.settings-btn, .refresh-btn, .menu-btn, .modal-close) {
+[data-design="modern"] :is(.settings-btn, .refresh-btn, .menu-btn, .modal-close, .view-mode-btn) {
   min-width: 44px;
   min-height: 44px;
   font-size: 1.1rem;

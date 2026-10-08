@@ -434,7 +434,8 @@
 }
 
 .article-read-btn,
-.bulk-read-btn {
+.bulk-read-btn,
+.view-mode-btn {
   background: transparent;
   border: 1px solid var(--rule);
   color: var(--ink-mid);
@@ -452,16 +453,27 @@
 }
 
 .article-read-btn:hover:not(:disabled),
-.bulk-read-btn:hover:not(:disabled) {
+.bulk-read-btn:hover:not(:disabled),
+.view-mode-btn:hover:not(:disabled) {
   color: var(--ink);
   border-color: var(--ink-mid);
   background: var(--paper-alt);
 }
 
 .article-read-btn:disabled,
-.bulk-read-btn:disabled {
+.bulk-read-btn:disabled,
+.view-mode-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.view-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  padding: 6px;
 }
 
 .bulk-read-status {
@@ -598,6 +610,30 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Headings stay compact until an article is opened for reading. */
+.article-list.compact .article-item:not(.expanded) {
+  padding-block: 8px;
+}
+
+.article-list.compact .article-item:not(.expanded) .article-title {
+  margin: 0;
+  font-size: var(--article-fs, 1rem);
+  line-height: 1.4;
+}
+
+.article-list.compact .article-item.read:not(.expanded) .article-title {
+  font-weight: 400;
+  color: var(--ink-mid);
+}
+
+.article-unread-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .article-source-link {
