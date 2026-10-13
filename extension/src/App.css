@@ -78,6 +78,15 @@
   overflow: hidden;
 }
 
+.sidebar-body,
+.reader-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ── Sidebar ── */
 
 .sidebar {

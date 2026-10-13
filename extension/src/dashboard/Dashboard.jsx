@@ -597,76 +597,78 @@ function Dashboard() {
                     </button>
                 </div>
 
-                <form className="add-feed-form" onSubmit={handleAddFeed}>
-                    <input
-                        type="url"
-                        aria-label="Feed URL"
-                        aria-describedby={feedError ? 'feed-error' : undefined}
-                        className="feed-url-input"
-                        placeholder="https://example.com/rss"
-                        value={newFeedUrl}
-                        onChange={(e) => setNewFeedUrl(e.target.value)}
-                    />
-                    <button type="submit" className="subscribe-btn" disabled={loading}>
-                        {loading ? 'Adding...' : '+ Subscribe'}
-                    </button>
-                    {feedError && <p id="feed-error" className="feed-error" role="alert">{feedError}</p>}
-                </form>
+                <div className="sidebar-body">
+                    <form className="add-feed-form" onSubmit={handleAddFeed}>
+                        <input
+                            type="url"
+                            aria-label="Feed URL"
+                            aria-describedby={feedError ? 'feed-error' : undefined}
+                            className="feed-url-input"
+                            placeholder="https://example.com/rss"
+                            value={newFeedUrl}
+                            onChange={(e) => setNewFeedUrl(e.target.value)}
+                        />
+                        <button type="submit" className="subscribe-btn" disabled={loading}>
+                            {loading ? 'Adding...' : '+ Subscribe'}
+                        </button>
+                        {feedError && <p id="feed-error" className="feed-error" role="alert">{feedError}</p>}
+                    </form>
 
-                <nav className="feed-nav">
-                    <ul className="feed-list">
-                        <li
-                            className={`feed-item ${!selectedFeedId ? 'active' : ''}`}
-                        >
-                            <button className="feed-select" onClick={() => selectFeed(null)} aria-current={!selectedFeedId ? 'page' : undefined}>
-                                <span className="feed-item-title">All Articles</span>
-                                {totalUnread > 0 && <span className="feed-unread">{totalUnread}</span>}
-                            </button>
-                        </li>
-                        {sortedSubscriptions.map(sub => (
+                    <nav className="feed-nav">
+                        <ul className="feed-list">
                             <li
-                                key={sub.id}
-                                className={`feed-item ${selectedFeedId === sub.id ? 'active' : ''}`}
-                                data-feed-menu-open={openFeedMenuId === sub.id}
+                                className={`feed-item ${!selectedFeedId ? 'active' : ''}`}
                             >
-                                <button className="feed-select" onClick={() => selectFeed(sub.id)} aria-current={selectedFeedId === sub.id ? 'page' : undefined}>
-                                    <span className="feed-item-title">{sub.title}</span>
-                                    {unreadByFeed[sub.id] > 0 && (
-                                        <span className="feed-unread">{unreadByFeed[sub.id]}</span>
-                                    )}
+                                <button className="feed-select" onClick={() => selectFeed(null)} aria-current={!selectedFeedId ? 'page' : undefined}>
+                                    <span className="feed-item-title">All Articles</span>
+                                    {totalUnread > 0 && <span className="feed-unread">{totalUnread}</span>}
                                 </button>
-                                <button
-                                    className={`feed-item-star ${sub.starred ? 'starred' : ''}`}
-                                    onClick={(e) => { e.stopPropagation(); toggleStar(sub.id); }}
-                                    title={sub.starred ? 'Unpin' : 'Pin to top'}
-                                    aria-label={sub.starred ? 'Unstar feed' : 'Star feed'}
-                                >
-                                    {sub.starred ? '★' : '☆'}
-                                </button>
-                                <button
-                                    id={`feed-options-${sub.id}`}
-                                    className="feed-options-btn"
-                                    aria-label={`Options for ${sub.title}`}
-                                    aria-expanded={openFeedMenuId === sub.id}
-                                    aria-controls={`feed-menu-${sub.id}`}
-                                    onClick={() => setOpenFeedMenuId(current => current === sub.id ? null : sub.id)}
-                                >
-                                    ⋯
-                                </button>
-                                {openFeedMenuId === sub.id && (
-                                    <div className="feed-menu-panel" id={`feed-menu-${sub.id}`}>
-                                        <button
-                                            disabled={isSavingBulkRead || !unreadByFeed[sub.id]}
-                                            onClick={() => markAllAsRead(sub.id)}
-                                        >
-                                            Mark feed as read
-                                        </button>
-                                    </div>
-                                )}
                             </li>
-                        ))}
-                    </ul>
-                </nav>
+                            {sortedSubscriptions.map(sub => (
+                                <li
+                                    key={sub.id}
+                                    className={`feed-item ${selectedFeedId === sub.id ? 'active' : ''}`}
+                                    data-feed-menu-open={openFeedMenuId === sub.id}
+                                >
+                                    <button className="feed-select" onClick={() => selectFeed(sub.id)} aria-current={selectedFeedId === sub.id ? 'page' : undefined}>
+                                        <span className="feed-item-title">{sub.title}</span>
+                                        {unreadByFeed[sub.id] > 0 && (
+                                            <span className="feed-unread">{unreadByFeed[sub.id]}</span>
+                                        )}
+                                    </button>
+                                    <button
+                                        className={`feed-item-star ${sub.starred ? 'starred' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); toggleStar(sub.id); }}
+                                        title={sub.starred ? 'Unpin' : 'Pin to top'}
+                                        aria-label={sub.starred ? 'Unstar feed' : 'Star feed'}
+                                    >
+                                        {sub.starred ? '★' : '☆'}
+                                    </button>
+                                    <button
+                                        id={`feed-options-${sub.id}`}
+                                        className="feed-options-btn"
+                                        aria-label={`Options for ${sub.title}`}
+                                        aria-expanded={openFeedMenuId === sub.id}
+                                        aria-controls={`feed-menu-${sub.id}`}
+                                        onClick={() => setOpenFeedMenuId(current => current === sub.id ? null : sub.id)}
+                                    >
+                                        ⋯
+                                    </button>
+                                    {openFeedMenuId === sub.id && (
+                                        <div className="feed-menu-panel" id={`feed-menu-${sub.id}`}>
+                                            <button
+                                                disabled={isSavingBulkRead || !unreadByFeed[sub.id]}
+                                                onClick={() => markAllAsRead(sub.id)}
+                                            >
+                                                Mark feed as read
+                                            </button>
+                                        </div>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </nav>
+                </div>
             </aside>
 
             {/* Main Content */}
@@ -765,49 +767,51 @@ function Dashboard() {
                     </div>
                 </header>
 
-                {!showSettings && actionError && <p className="reader-status" role="alert">{actionError}</p>}
-                {bulkReadStatus && (
-                    <div className="reader-status bulk-read-status" role="status">
-                        <span>{bulkReadStatus.message}</span>
-                        {bulkReadStatus.items.length > 0 && (
-                            <button className="bulk-read-btn" disabled={isSavingBulkRead} onClick={undoBulkRead}>Undo</button>
-                        )}
-                    </div>
-                )}
-                {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
+                <div className="reader-body">
+                    {!showSettings && actionError && <p className="reader-status" role="alert">{actionError}</p>}
+                    {bulkReadStatus && (
+                        <div className="reader-status bulk-read-status" role="status">
+                            <span>{bulkReadStatus.message}</span>
+                            {bulkReadStatus.items.length > 0 && (
+                                <button className="bulk-read-btn" disabled={isSavingBulkRead} onClick={undoBulkRead}>Undo</button>
+                            )}
+                        </div>
+                    )}
+                    {refreshStatus && <p className="reader-status" role={refreshStatus.failed ? 'alert' : 'status'}>{refreshStatus.message}</p>}
 
-                <div id="article-list" className={`article-list${isCompact ? ' compact' : ''}`}>
-                    <div className="article-column">
-                        {displayItems.length === 0 && (
-                            <div className="empty-state">
-                                <p className="empty-headline">Nothing here yet.</p>
-                                <p className="empty-body">
-                                    Add an RSS feed above, or import an OPML file via Settings.
-                                </p>
-                            </div>
-                        )}
+                    <div id="article-list" className={`article-list${isCompact ? ' compact' : ''}`}>
+                        <div className="article-column">
+                            {displayItems.length === 0 && (
+                                <div className="empty-state">
+                                    <p className="empty-headline">Nothing here yet.</p>
+                                    <p className="empty-body">
+                                        Add an RSS feed above, or import an OPML file via Settings.
+                                    </p>
+                                </div>
+                            )}
 
-                        {visibleItems.map((item, index) => (
-                            <ArticleItem
-                                key={articleKey(item.id, item.feedId)}
-                                item={item}
-                                feedTitle={subMap[item.feedId]}
-                                isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
-                                isFocused={focusedIndex === index}
-                                isCompact={isCompact}
-                                onToggle={toggleExpand}
-                                onMarkRead={setItemRead}
-                                isSavingRead={isSavingBulkRead || pendingReadItems.has(articleKey(item.id, item.feedId))}
-                            />
-                        ))}
+                            {visibleItems.map((item, index) => (
+                                <ArticleItem
+                                    key={articleKey(item.id, item.feedId)}
+                                    item={item}
+                                    feedTitle={subMap[item.feedId]}
+                                    isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
+                                    isFocused={focusedIndex === index}
+                                    isCompact={isCompact}
+                                    onToggle={toggleExpand}
+                                    onMarkRead={setItemRead}
+                                    isSavingRead={isSavingBulkRead || pendingReadItems.has(articleKey(item.id, item.feedId))}
+                                />
+                            ))}
 
-                        {hasMore && (
-                            <div className="load-more-container">
-                                <button className="load-more-btn" onClick={() => setPage(p => p + 1)}>
-                                    Load more — {displayItems.length - visibleItems.length} remaining
-                                </button>
-                            </div>
-                        )}
+                            {hasMore && (
+                                <div className="load-more-container">
+                                    <button className="load-more-btn" onClick={() => setPage(p => p + 1)}>
+                                        Load more — {displayItems.length - visibleItems.length} remaining
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </main>
