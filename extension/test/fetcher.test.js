@@ -3,7 +3,7 @@ import test from 'node:test';
 import { fetchFeed } from '../src/utils/fetcher.js';
 
 const feedUrl = 'https://example.com/feed.xml';
-const MAX_FEED_BYTES = 5 * 1024 * 1024;
+const MAX_FEED_BYTES = 20 * 1024 * 1024;
 
 function responseWithBody(body, options) {
     return new Response(body, options);
@@ -93,6 +93,21 @@ test('DOCTYPE declarations are rejected while standard XML entities still parse'
     assert.equal(parsed.title, 'A & B < C');
 });
 
+test('feeds at the 20 MiB limit parse with and without Content-Length', async t => {
+    const prefix = '<rss version="2.0"><channel><title>Large feed</title><!--';
+    const suffix = '--><item><guid>large-1</guid><title>Article</title><description>Full article</description></item></channel></rss>';
+    const xml = prefix + ' '.repeat(MAX_FEED_BYTES - prefix.length - suffix.length) + suffix;
+    let headers;
+    t.mock.method(globalThis, 'fetch', async () => responseWithBody(xml, { headers }));
+
+    for (headers of [{ 'Content-Length': String(MAX_FEED_BYTES) }, {}]) {
+        const parsed = await fetchFeed(feedUrl);
+        assert.equal(parsed.title, 'Large feed');
+        assert.equal(parsed.items.length, 1);
+        assert.equal(parsed.items[0].content, 'Full article');
+    }
+});
+
 test('oversized feed responses are rejected by Content-Length and streamed byte count', async t => {
     let headerBodyCancelled = false;
     let response = responseWithBody(new ReadableStream({
@@ -103,7 +118,7 @@ test('oversized feed responses are rejected by Content-Length and streamed byte 
     t.mock.method(globalThis, 'fetch', async () => response);
     t.mock.method(console, 'error', () => {});
 
-    await assert.rejects(fetchFeed(feedUrl), /Feed response exceeds the 5 MiB limit/);
+    await assert.rejects(fetchFeed(feedUrl), /Feed response exceeds the 20 MiB limit/);
     assert.equal(headerBodyCancelled, true);
 
     let streamedBodyCancelled = false;
@@ -120,7 +135,7 @@ test('oversized feed responses are rejected by Content-Length and streamed byte 
         },
         cancel() { streamedBodyCancelled = true; }
     }));
-    await assert.rejects(fetchFeed(feedUrl), /Feed response exceeds the 5 MiB limit/);
+    await assert.rejects(fetchFeed(feedUrl), /Feed response exceeds the 20 MiB limit/);
     assert.equal(streamedBodyCancelled, true);
 });
 

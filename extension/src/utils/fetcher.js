@@ -104,7 +104,7 @@ async function readResponseBody(response) {
     return new TextDecoder().decode(bytes);
 }
 
-const MAX_FEED_MIB = 5;
+const MAX_FEED_MIB = 20;
 const MAX_FEED_BYTES = MAX_FEED_MIB * 1024 * 1024;
 
 /**

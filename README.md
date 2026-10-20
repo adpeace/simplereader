@@ -89,7 +89,7 @@ npm test         # Feed parsing, storage migration, and concurrency regressions
 - **Background worker** (`src/background/index.js`) — all feed fetching and storage writes; updates the badge with the unread count
 - **Storage** — `chrome.storage.sync` for settings/subscriptions, `chrome.storage.local` for articles
 - **Subscription migration** — Existing subscription lists migrate automatically to individual sync records, preserving feed IDs and cached articles. Chrome's overall sync capacity and write-rate limits still apply; failed operations are reported in the reader.
-- **Feed limits** — Fetches have a 10-second deadline through body download and a 5 MiB maximum body size. Feeds declaring a DOCTYPE are rejected to prevent custom XML entity processing.
+- **Feed limits** — Fetches have a 10-second deadline through body download and a 20 MiB maximum body size. Feeds declaring a DOCTYPE are rejected to prevent custom XML entity processing.
 - **Feed parsing** — `fast-xml-parser` handles RSS 2.0, Atom, RSS 1.0 (RDF)
 - **Content safety** — HTML from feeds sanitized with `DOMPurify` before rendering
 - **Appearance** — `src/utils/appearance.js` applies saved preferences in the reader and popup and follows Chrome Sync and system color changes. `designTheme` selects the visual design; the existing `theme` preference selects Light/Dark/System. Design styling lives in CSS and is independent of article expansion, view modes, and filtering. Modern overrides shared theme variables in `src/themes/modern.css`; missing or unknown designs fall back to Default.
