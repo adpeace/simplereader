@@ -9,6 +9,65 @@ function responseWithBody(body, options) {
     return new Response(body, options);
 }
 
+test('Atom retains the reported article content base and resolves relative alternate links', async t => {
+    const xml = `<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://anil.recoil.org/">
+        <link rel="self" href="news.xml"/><link href="/"/>
+        <entry><id>weekly-note</id><link href="/notes/2026w41"/>
+            <content type="html" xml:base="https://anil.recoil.org/">&lt;img src="/images/w41-photos.webp"&gt;</content>
+        </entry></feed>`;
+    t.mock.method(globalThis, 'fetch', async () => responseWithBody(xml));
+    const parsed = await fetchFeed(feedUrl);
+    assert.equal(parsed.siteLink, 'https://anil.recoil.org/');
+    assert.equal(parsed.items[0].link, 'https://anil.recoil.org/notes/2026w41');
+    assert.equal(parsed.items[0].contentBaseUrl, 'https://anil.recoil.org/');
+    assert.equal(parsed.items[0].content, '<img src="/images/w41-photos.webp">');
+});
+
+test('Atom inherits nested XML bases and uses the final feed response URL after redirects', async t => {
+    let xml = `<feed xmlns="http://www.w3.org/2005/Atom" xml:base="../site/">
+        <entry xml:base="posts/"><id>entry</id><link xml:base="../" href="article"/>
+            <summary xml:base="../../media/" type="html">Image</summary></entry></feed>`;
+    t.mock.method(globalThis, 'fetch', async () => {
+        const response = responseWithBody(xml);
+        Object.defineProperty(response, 'url', { value: 'https://redirected.example/feeds/atom.xml' });
+        return response;
+    });
+    const parsed = await fetchFeed(feedUrl);
+    assert.equal(parsed.items[0].link, 'https://redirected.example/site/article');
+    assert.equal(parsed.items[0].contentBaseUrl, 'https://redirected.example/media/');
+
+    xml = '<feed><entry><id>entry</id><link href="post"/><content>Text</content></entry></feed>';
+    const withoutBase = await fetchFeed(feedUrl);
+    assert.equal(withoutBase.items[0].link, 'https://redirected.example/feeds/post');
+    assert.equal(withoutBase.items[0].contentBaseUrl, 'https://redirected.example/feeds/atom.xml');
+});
+
+test('RSS and RDF resolve relative article links without changing stable item IDs', async t => {
+    let xml;
+    t.mock.method(globalThis, 'fetch', async () => responseWithBody(xml));
+    for (xml of [
+        '<rss><channel><link>/</link><item><link>/posts/article</link><description>Article</description></item></channel></rss>',
+        '<rdf:RDF><channel><link>/</link></channel><item><link>/posts/article</link><description>Article</description></item></rdf:RDF>',
+    ]) {
+        const parsed = await fetchFeed(feedUrl);
+        assert.equal(parsed.siteLink, 'https://example.com/');
+        assert.equal(parsed.items[0].id, '/posts/article');
+        assert.equal(parsed.items[0].link, 'https://example.com/posts/article');
+        assert.equal(parsed.items[0].contentBaseUrl, 'https://example.com/posts/article');
+    }
+});
+
+test('RSS respects XML bases on the feed, item, and selected content element', async t => {
+    const xml = `<rss xml:base="../"><channel xml:base="site/">
+        <item xml:base="posts/"><guid>stable</guid><link>article</link>
+            <description xml:base="../../media/">Image</description></item></channel></rss>`;
+    t.mock.method(globalThis, 'fetch', async () => responseWithBody(xml));
+    const parsed = await fetchFeed('https://example.com/feeds/rss.xml');
+    assert.equal(parsed.items[0].id, 'stable');
+    assert.equal(parsed.items[0].link, 'https://example.com/site/posts/article');
+    assert.equal(parsed.items[0].contentBaseUrl, 'https://example.com/media/');
+});
+
 test('numeric Atom text and attributed values are returned as strings, including zero', async t => {
     const xml = `<?xml version="1.0"?>
         <feed xmlns="http://www.w3.org/2005/Atom">

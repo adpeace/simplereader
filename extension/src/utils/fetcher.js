@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import { getArticleUrl } from './links.js';
 
 const parser = new XMLParser({
     ignoreAttributes: false,
@@ -19,6 +20,19 @@ function getText(value) {
 function asArray(value) {
     if (value === null || value === undefined) return [];
     return Array.isArray(value) ? value : [value];
+}
+
+// XML bases inherit through feed, entry, and content elements. Ignore invalid
+// bases rather than allowing them to point article resources into the extension.
+function xmlBase(node, inheritedBase) {
+    return getArticleUrl(node?.['@_xml:base'], inheritedBase) || inheritedBase;
+}
+
+function atomLink(node, baseUrl) {
+    const link = asArray(node.link).find(link =>
+        link['@_rel'] === 'alternate' || !link['@_rel']
+    );
+    return getArticleUrl(link?.['@_href'], xmlBase(link, baseUrl));
 }
 
 function hasDoctypeDeclaration(xmlText) {
@@ -146,15 +160,16 @@ export async function fetchFeed(url, { etag, lastModified } = {}) {
             throw new Error('DOCTYPE declarations are not supported in feeds');
         }
         const result = parser.parse(xmlText);
+        const baseUrl = getArticleUrl(response.url) || url;
 
         let feed;
         // Normalize RSS vs Atom
         if (Object.prototype.hasOwnProperty.call(result, 'rss')) {
-            feed = parseRSS2(result.rss ?? {});
+            feed = parseRSS2(result.rss ?? {}, baseUrl);
         } else if (Object.prototype.hasOwnProperty.call(result, 'feed')) {
-            feed = parseAtom(result.feed ?? {});
+            feed = parseAtom(result.feed ?? {}, baseUrl);
         } else if (Object.prototype.hasOwnProperty.call(result, 'rdf:RDF')) {
-            feed = parseRSS1(result['rdf:RDF'] ?? {});
+            feed = parseRSS1(result['rdf:RDF'] ?? {}, baseUrl);
         } else {
             throw new Error('Unknown feed format');
         }
@@ -171,46 +186,52 @@ export async function fetchFeed(url, { etag, lastModified } = {}) {
     }
 }
 
-function parseRSS2(rss) {
+function parseRSS2(rss, baseUrl) {
     const channel = rss.channel ?? {};
     const items = asArray(channel.item);
+    const feedBase = xmlBase(channel, xmlBase(rss, baseUrl));
 
     return {
         title: getText(channel.title),
         description: getText(channel.description),
-        siteLink: channel.link || null,
-        items: items.map(item => ({
-            id: getText(item.guid) || getText(item.link) || getText(item.title),
-            title: getText(item.title),
-            link: item.link,
-            content: getText(item['content:encoded'] || item.description),
-            pubDate: item.pubDate,
-            read: false
-        }))
+        siteLink: getArticleUrl(getText(channel.link), feedBase),
+        items: items.map(item => {
+            const itemBase = xmlBase(item, feedBase);
+            const link = getArticleUrl(getText(item.link), xmlBase(item.link, itemBase));
+            const content = item['content:encoded'] || item.description;
+            const hasDeclaredBase = [rss, channel, item, content].some(node => node?.['@_xml:base']);
+            return {
+                id: getText(item.guid) || getText(item.link) || getText(item.title),
+                title: getText(item.title),
+                link,
+                content: getText(content),
+                contentBaseUrl: hasDeclaredBase ? xmlBase(content, itemBase) : link || itemBase,
+                pubDate: item.pubDate,
+                read: false
+            };
+        })
     };
 }
 
-function parseAtom(feed) {
+function parseAtom(feed, baseUrl) {
     const entries = asArray(feed.entry);
-
-    const siteLink = Array.isArray(feed.link)
-        ? (feed.link.find(l => l['@_rel'] === 'alternate' || !l['@_rel'])?.['@_href'] ?? null)
-        : (feed.link?.['@_href'] ?? null);
+    const feedBase = xmlBase(feed, baseUrl);
+    const siteLink = atomLink(feed, feedBase);
 
     return {
         title: getText(feed.title),
         siteLink,
         items: entries.map(entry => {
-            // Atom links can be arrays or objects
-            const link = Array.isArray(entry.link)
-                ? entry.link.find(l => l['@_rel'] === 'alternate' || !l['@_rel'])?.['@_href']
-                : entry.link?.['@_href'];
+            const entryBase = xmlBase(entry, feedBase);
+            const link = atomLink(entry, entryBase);
+            const content = entry.content || entry.summary;
 
             return {
                 id: getText(entry.id),
                 title: getText(entry.title),
                 link: link,
-                content: getText(entry.content || entry.summary),
+                content: getText(content),
+                contentBaseUrl: xmlBase(content, entryBase),
                 pubDate: entry.updated || entry.published,
                 read: false
             };
@@ -218,20 +239,27 @@ function parseAtom(feed) {
     };
 }
 
-function parseRSS1(rdf) {
+function parseRSS1(rdf, baseUrl) {
     const channel = rdf.channel ?? {};
     const items = asArray(rdf.item);
+    const feedBase = xmlBase(rdf, baseUrl);
 
     return {
         title: getText(channel.title),
-        siteLink: channel.link || null,
-        items: items.map(item => ({
-            id: item.link || getText(item.title),
-            title: getText(item.title),
-            link: item.link,
-            content: getText(item.description),
-            pubDate: item['dc:date'],
-            read: false
-        }))
+        siteLink: getArticleUrl(getText(channel.link), xmlBase(channel, feedBase)),
+        items: items.map(item => {
+            const itemBase = xmlBase(item, feedBase);
+            const link = getArticleUrl(getText(item.link), xmlBase(item.link, itemBase));
+            const hasDeclaredBase = [rdf, item, item.description].some(node => node?.['@_xml:base']);
+            return {
+                id: getText(item.link) || getText(item.title),
+                title: getText(item.title),
+                link,
+                content: getText(item.description),
+                contentBaseUrl: hasDeclaredBase ? xmlBase(item.description, itemBase) : link || itemBase,
+                pubDate: item['dc:date'],
+                read: false
+            };
+        })
     }
 }

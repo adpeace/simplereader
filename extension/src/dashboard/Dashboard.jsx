@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import DOMPurify from 'dompurify';
 import '../App.css';
 import {
     getSubscriptions, SUBSCRIPTION_PREFIX,
@@ -10,6 +9,7 @@ import {
 } from '../utils/storage';
 import { parseOPML, generateOPML } from '../utils/opml';
 import { getArticleUrl } from '../utils/links';
+import { sanitizeArticleContent } from '../utils/content';
 import { DESIGN_THEMES, DEFAULT_SETTINGS } from '../utils/settings';
 import { applyAppearance, observeAppearance } from '../utils/appearance';
 
@@ -40,9 +40,9 @@ function stripHtml(html) {
 
 // Memoized per-article component. Only re-renders when its own props change,
 // so expanding one article doesn't re-render all others.
-const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpanded, isFocused, isCompact, onToggle, onMarkRead, isSavingRead }) {
+const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, feedUrl, isExpanded, isFocused, isCompact, onToggle, onMarkRead, isSavingRead }) {
     const ref = useRef(null);
-    const sourceUrl = getArticleUrl(item.link);
+    const sourceUrl = getArticleUrl(item.link, feedUrl);
 
     useEffect(() => {
         if (isFocused && ref.current) ref.current.scrollIntoView({ block: 'nearest' });
@@ -54,14 +54,13 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, isExpande
         return stripHtml(item.content).slice(0, 300);
     }, [isCompact, item.content]);
 
-    // Sanitize only when expanded, and only once per item (memoized by isExpanded + content).
+    // Cached articles predate contentBaseUrl; their original link is a useful
+    // fallback without needing to download the feed again.
     const sanitizedContent = useMemo(() => {
         if (!isExpanded || item.content == null || item.content === '') return null;
-        return DOMPurify.sanitize(String(item.content), {
-            ADD_TAGS: ['img'],
-            ADD_ATTR: ['src', 'width', 'height', 'alt']
-        });
-    }, [isExpanded, item.content]);
+        const baseUrl = getArticleUrl(item.contentBaseUrl) || sourceUrl || getArticleUrl(feedUrl);
+        return sanitizeArticleContent(item.content, baseUrl);
+    }, [isExpanded, item.content, item.contentBaseUrl, sourceUrl, feedUrl]);
 
     const pubDate = item.pubDate
         ? new Date(item.pubDate).toLocaleDateString('en-US', {
@@ -197,6 +196,10 @@ function Dashboard() {
     // O(1) feed title lookup instead of O(n) find() called once per rendered item.
     const subMap = useMemo(
         () => Object.fromEntries(subscriptions.map(s => [s.id, s.title])),
+        [subscriptions]
+    );
+    const feedUrls = useMemo(
+        () => Object.fromEntries(subscriptions.map(s => [s.id, s.url])),
         [subscriptions]
     );
 
@@ -795,6 +798,7 @@ function Dashboard() {
                                     key={articleKey(item.id, item.feedId)}
                                     item={item}
                                     feedTitle={subMap[item.feedId]}
+                                    feedUrl={feedUrls[item.feedId]}
                                     isExpanded={expandedItems.has(articleKey(item.id, item.feedId))}
                                     isFocused={focusedIndex === index}
                                     isCompact={isCompact}

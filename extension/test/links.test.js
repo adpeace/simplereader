@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getArticleUrl } from '../src/utils/links.js';
 
+test('relative article URLs require an explicit base and still reject unsafe schemes', () => {
+    assert.equal(getArticleUrl('../post?q=1#section', 'https://example.com/feeds/rss.xml'), 'https://example.com/post?q=1#section');
+    assert.equal(getArticleUrl('//cdn.example.com/post', 'https://example.com/feed'), 'https://cdn.example.com/post');
+    assert.equal(getArticleUrl('javascript:alert(1)', 'https://example.com/feed'), null);
+    assert.equal(getArticleUrl('', 'https://example.com/feed'), null);
+});
+
 test('article URLs accept HTTP and HTTPS and preserve query strings and fragments', () => {
     for (const url of [
         'http://example.com/article',
