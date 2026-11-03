@@ -87,7 +87,12 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, feedUrl, 
                 {isCompact && !isExpanded && !item.read && (
                     <span className="article-unread-dot" role="img" aria-label="Unread" />
                 )}
-                <span className="article-title-text">{item.title}</span>
+                <span className="article-title-text">
+                    {item.title}
+                    {isCompact && !isExpanded && feedTitle && (
+                        <span className="article-feed-name"> · {feedTitle}</span>
+                    )}
+                </span>
                 {sourceUrl && (
                     <a
                         href={sourceUrl}

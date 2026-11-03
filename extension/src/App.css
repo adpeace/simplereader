@@ -621,6 +621,13 @@
   overflow-wrap: anywhere;
 }
 
+.article-feed-name {
+  font-family: var(--font-ui);
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--ink-light);
+}
+
 /* Headings stay compact until an article is opened for reading. */
 .article-list.compact .article-item:not(.expanded) {
   padding-block: 8px;
