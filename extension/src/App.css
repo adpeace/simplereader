@@ -591,6 +591,10 @@
 .article-item {
   padding: 26px 0;
   border-bottom: 1px solid var(--rule);
+}
+
+.article-item:not(.expanded),
+.article-title {
   cursor: pointer;
 }
 
@@ -598,7 +602,8 @@
   border-top: none;
 }
 
-.article-item:hover .article-title {
+.article-item:not(.expanded):hover .article-title,
+.article-title:hover {
   color: var(--accent);
 }
 

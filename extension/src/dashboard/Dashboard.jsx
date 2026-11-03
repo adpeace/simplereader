@@ -81,9 +81,12 @@ const ArticleItem = React.memo(function ArticleItem({ item, feedTitle, feedUrl, 
         <article
             ref={ref}
             className={`article-item${item.read ? ' read' : ' unread'}${isExpanded ? ' expanded' : ''}${isFocused ? ' focused' : ''}`}
-            onClick={() => onToggle(item.id, item.feedId)}
+            onClick={isExpanded ? undefined : () => onToggle(item.id, item.feedId)}
         >
-            <h2 className="article-title">
+            <h2
+                className="article-title"
+                onClick={isExpanded ? () => onToggle(item.id, item.feedId) : undefined}
+            >
                 {isCompact && !isExpanded && !item.read && (
                     <span className="article-unread-dot" role="img" aria-label="Unread" />
                 )}
