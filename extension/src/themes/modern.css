@@ -96,7 +96,7 @@
 /* Both panes share the header row, including when toolbar controls wrap. */
 [data-design="modern"] .dashboard-container {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 232px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 

@@ -22,6 +22,7 @@ Privacy-focused, local-first RSS reader. No account required.
 - **Original article links** beside each title — open articles in new tabs directly from the list and mark them as read
 - **Headings-only view** — toggle the top-bar button for a compact article list; your choice is saved across sessions
 - **Starred/pinned feeds** float to the top of the sidebar
+- **Resizable sidebar** — drag the divider to adjust its width, use Left/Right arrows when focused, or double-click to reset; the width is remembered on this device
 - **Efficient conditional HTTP fetching** (ETag / Last-Modified)
 
 ---

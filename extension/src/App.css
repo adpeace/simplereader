@@ -73,6 +73,7 @@
 ═══════════════════════════════════════════ */
 
 .dashboard-container {
+  position: relative;
   display: flex;
   height: 100vh;
   overflow: hidden;
@@ -90,13 +91,80 @@
 /* ── Sidebar ── */
 
 .sidebar {
-  width: 232px;
+  width: var(--sidebar-width, 232px);
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.sidebar-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 232px) - 4px);
+  width: 8px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-divider::after {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  transition: background-color 0.15s;
+}
+
+.sidebar-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 4px;
+  height: 32px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sidebar-divider:hover::after,
+.sidebar-divider:focus-visible::after,
+.resizing-sidebar .sidebar-divider::after {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.sidebar-divider:hover::before,
+.sidebar-divider:focus-visible::before,
+.resizing-sidebar .sidebar-divider::before {
+  opacity: 1;
+}
+
+/* The highlighted line and grip provide focus feedback without boxing in
+   the full-height pointer target, including after programmatic focus. */
+.sidebar-divider:focus {
+  outline: none;
+}
+
+.sidebar-divider:focus-visible::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+@media (forced-colors: active) {
+  .sidebar-divider:focus-visible::before {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+.resizing-sidebar,
+.resizing-sidebar * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .masthead-brand {
@@ -1105,10 +1173,6 @@
 
 /* ── 600–799px: Narrow desktop ── */
 @media (max-width: 799px) {
-    .sidebar {
-        width: 180px;
-    }
-
     .content-header {
         padding: 16px 20px 14px;
     }
@@ -1132,6 +1196,10 @@
 
 /* ── < 600px: Compact / overlay ── */
 @media (max-width: 599px) {
+    .sidebar-divider {
+        display: none;
+    }
+
     .sidebar {
         position: fixed;
         top: 0;

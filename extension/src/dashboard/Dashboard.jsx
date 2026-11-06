@@ -12,6 +12,7 @@ import { getArticleUrl } from '../utils/links';
 import { sanitizeArticleContent } from '../utils/content';
 import { DESIGN_THEMES, DEFAULT_SETTINGS } from '../utils/settings';
 import { applyAppearance, observeAppearance } from '../utils/appearance';
+import ResizableLayout from './ResizableLayout';
 
 const PAGE_SIZE = 50;
 const articleKey = (itemId, feedId) => JSON.stringify([feedId, itemId]);
@@ -431,7 +432,7 @@ function Dashboard() {
                 return;
             }
             if (showSettings || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey ||
-                e.target.closest('input, textarea, select, button, a, [role="button"], [contenteditable="true"]')) return;
+                e.target.closest('input, textarea, select, button, a, [role="button"], [role="separator"], [contenteditable="true"]')) return;
             if (e.key === 'j' || e.key === 'ArrowDown') {
                 e.preventDefault();
                 setFocusedIndex(prev => visibleItems.length
@@ -590,9 +591,9 @@ function Dashboard() {
     const isCompact = settings.viewMode === 'headlines';
 
     return (
-        <div className="dashboard-container">
+        <ResizableLayout>
             {/* Sidebar */}
-            <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
+            <aside id="feed-sidebar" className={`sidebar${sidebarOpen ? ' open' : ''}`}>
                 <div className="sidebar-masthead">
                     <span className="masthead-brand">
                         <img src="/icons/icon.svg" className="masthead-icon" alt="" />
@@ -939,7 +940,7 @@ function Dashboard() {
                     </div>
                 </div>
             )}
-        </div>
+        </ResizableLayout>
     );
 }
 
